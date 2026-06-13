@@ -1,6 +1,6 @@
 # ThunderJS — Executable JAR Validation Report
 
-This report demonstrates and verifies the execution of Tode/ThunderJS using the packaged executable `tode.jar`.
+This report demonstrates and verifies the execution of Tode/ThunderJS using the packaged executable `tode.jar` located at the root of the workspace.
 
 ---
 

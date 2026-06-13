@@ -9,7 +9,7 @@ Tode is a high-performance, custom JavaScript runtime written from scratch in Ja
 ### 1. Build the Executable JAR
 First, compile and package the runtime using the build script:
 ```bash
-bash build.sh
+bash src/build.sh
 ```
 This compiles the source code and packages it into `tode.jar` in the root folder.
 
@@ -56,13 +56,14 @@ Evaluate code with developer diagnostics:
 
 ```
 ThunderJS/
-├── src/               # Java source code (lexer, parser, interpreter, runtime)
+├── src/               # Java source code, build script, validation docs, launcher
+│   ├── thunderjs/     # Main package files
+│   ├── docs/          # Validation report
+│   ├── build.sh       # Compile and JAR packaging script
+│   └── tode           # Development launcher script
 ├── examples/          # Example JS programs and validation tests
-├── docs/demos/        # Pre-generated CLI flag output showcases
-├── .gitignore         # Build exclusions (ignores out/ and visualizations/)
-├── README.md          # This readme
-├── build.sh           # Manual compile and JAR build script
-└── tode.jar           # Packaged executable runtime JAR
+├── README.md          # Project documentation
+└── tode.jar           # Packaged executable runtime JAR (generated)
 ```
 
 ```
