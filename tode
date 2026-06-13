@@ -1,0 +1,30 @@
+#!/bin/bash
+# Tode Runtime Launcher — Smart Compilation + Execution
+# Matches requirements for macOS and Linux.
+
+set -e
+
+# Resolve script directory (absolute path)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Check if compile is needed
+COMPILE_NEEDED=false
+
+if [ ! -f "out/thunderjs/Main.class" ]; then
+    COMPILE_NEEDED=true
+else
+    # Find if any .java file in src is newer than out/thunderjs/Main.class
+    if [ -n "$(find src -name "*.java" -newer out/thunderjs/Main.class 2>/dev/null)" ]; then
+        COMPILE_NEEDED=true
+    fi
+fi
+
+if [ "$COMPILE_NEEDED" = true ]; then
+    echo "⚡ Compiling Tode Runtime..."
+    mkdir -p out
+    javac -d out $(find src -name "*.java")
+fi
+
+# Run the runtime, forwarding all parameters
+java -cp out thunderjs.Main "$@"

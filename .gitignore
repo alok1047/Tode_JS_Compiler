@@ -1,0 +1,8 @@
+# Build Outputs
+out/
+
+# Temporary visualizer outputs
+visualizations/
+
+# OS generated files
+.DS_Store
