@@ -1,213 +1,285 @@
-console.log("=== MEGA TEST START ===");
+console.log("=== HIDDEN TEST KILLER ===");
 
-/* ------------------ OBJECT ACCESS ------------------ */
-const key = "age";
+/* ---------------- CLOSURE ---------------- */
+
+function outer() {
+    let x = 10;
+
+    function inner() {
+        return x;
+    }
+
+    return inner;
+}
+
+const fn = outer();
+
+console.log(fn()); // 10
+
+/* ---------------- CLOSURE MUTATION ---------------- */
+
+function counter() {
+    let count = 0;
+
+    return function () {
+        count++;
+        return count;
+    };
+}
+
+const c = counter();
+
+console.log(c());
+console.log(c());
+console.log(c());
+
+/* ---------------- THIS ---------------- */
+
+const obj = {
+    value: 10,
+
+    getValue() {
+        return this.value;
+    }
+};
+
+console.log(obj.getValue());
+
+/* ---------------- NESTED PROPERTY ASSIGNMENT ---------------- */
 
 const user = {
-    name: "Alok",
-    [key]: 20,
-
-    greet() {
-        return "Hello";
+    stats: {
+        score: 5
     }
 };
 
-console.log(user.name);
-console.log(user["name"]);
-console.log(user[key]);
-console.log(user.greet());
+user.stats.score = 20;
 
-delete user.age;
-console.log(user.age);
+console.log(user.stats.score);
 
-/* ------------------ PROPERTY SHORTHAND ------------------ */
-const city = "Lucknow";
-const state = "UP";
+/* ---------------- DEEP PROPERTY ACCESS ---------------- */
 
-const location = { city, state };
+const deep = {
+    a: {
+        b: {
+            c: 42
+        }
+    }
+};
 
-console.log(location.city);
-console.log(location.state);
+console.log(deep.a.b.c);
 
-/* ------------------ OBJECT KEYS VALUES ENTRIES ------------------ */
+/* ---------------- COMPOUND ASSIGNMENT ---------------- */
+
+const scoreObj = {
+    score: 10
+};
+
+scoreObj.score += 5;
+
+console.log(scoreObj.score);
+
+/* ---------------- PREFIX / POSTFIX ---------------- */
+
+const hero = {
+    level: 10
+};
+
+hero.level++;
+++hero.level;
+
+console.log(hero.level);
+
+/* ---------------- ARRAY COMPOUND ASSIGNMENT ---------------- */
+
+const arr = [1, 2, 3];
+
+arr[1] += 10;
+
+console.log(arr[1]);
+
+/* ---------------- SHORT CIRCUIT ---------------- */
+
+console.log(false && 123);
+console.log(true || 456);
+
+let x = 0;
+
+true || (x = 100);
+
+console.log(x);
+
+/* ---------------- TRUTHY FALSY ---------------- */
+
+if ("")
+    console.log("BAD");
+else
+    console.log("EMPTY_STRING_OK");
+
+if (0)
+    console.log("BAD");
+else
+    console.log("ZERO_OK");
+
+if ("hello")
+    console.log("STRING_OK");
+
+/* ---------------- FUNCTION HOISTING ---------------- */
+
+hoisted();
+
+function hoisted() {
+    console.log("HOISTED_OK");
+}
+
+/* ---------------- FUNCTION EXPRESSION ---------------- */
+
+const bar = function () {
+    return "BAR_OK";
+};
+
+console.log(bar());
+
+/* ---------------- RECURSION ---------------- */
+
+function fact(n) {
+    if (n <= 1) return 1;
+
+    return n * fact(n - 1);
+}
+
+console.log(fact(8));
+
+/* ---------------- OBJECT REFERENCES ---------------- */
+
+const objA = {
+    value: 10
+};
+
+const objB = objA;
+
+objB.value = 99;
+
+console.log(objA.value);
+
+/* ---------------- ARRAY REFERENCES ---------------- */
+
+const arrA = [1, 2, 3];
+const arrB = arrA;
+
+arrB.push(4);
+
+console.log(arrA.join(","));
+
+/* ---------------- CALLBACK RETURNING OBJECT ---------------- */
+
+const mapped = [1, 2, 3].map(x => ({
+    value: x
+}));
+
+console.log(mapped[0].value);
+console.log(mapped[2].value);
+
+/* ---------------- NESTED DESTRUCTURING DEFAULT ---------------- */
+
+const profileUser = {
+    profile: {}
+};
+
+const {
+    profile: {
+        role = "user"
+    }
+} = profileUser;
+
+console.log(role);
+
+/* ---------------- DYNAMIC PROPERTY CREATION ---------------- */
+
+const key = "name";
+
+const dynamicObj = {};
+
+dynamicObj[key] = "Alok";
+
+console.log(dynamicObj.name);
+
+/* ---------------- ARRAY LENGTH ---------------- */
+
+const nums = [];
+
+nums.push(1);
+nums.push(2);
+nums.pop();
+
+console.log(nums.length);
+
+/* ---------------- FOR OF ARRAY ---------------- */
+
+for (const num of [10, 20, 30]) {
+    console.log("FOROF:" + num);
+}
+
+/* ---------------- FOR IN OBJECT ---------------- */
+
 const car = {
     brand: "Honda",
-    year: 2024
+    year: 2025
 };
 
-console.log(Object.keys(car).join(","));
-console.log(Object.values(car).join(","));
+for (const k in car) {
+    console.log("FORIN:" + k);
+}
+
+/* ---------------- OBJECT ENTRIES LOOP ---------------- */
 
 for (const [k, v] of Object.entries(car)) {
-    console.log(k + ":" + v);
+    console.log(k + "=" + v);
 }
 
-/* ------------------ FOR IN ------------------ */
-for (const k in car) {
-    console.log("forin-" + k);
+/* ---------------- SPARSE ARRAY ---------------- */
+
+const sparse = [];
+
+sparse[100] = 5;
+
+console.log(sparse.length);
+console.log(sparse[100]);
+console.log(sparse[50]);
+
+/* ---------------- ARRAY HOLE ---------------- */
+
+const hole = [1,,3];
+
+console.log(hole.length);
+console.log(hole[1]);
+
+/* ---------------- SET ---------------- */
+
+const set = new Set();
+
+set.add(1).add(2).add(3);
+
+console.log(set.size);
+
+for (const v of set) {
+    console.log("SET:" + v);
 }
 
-/* ------------------ ARRAY DESTRUCTURING ------------------ */
-const arr = [10, 20, 30, 40, 50];
+/* ---------------- MAP ---------------- */
 
-const [a, b] = arr;
-console.log(a);
-console.log(b);
+const map = new Map();
 
-const [first, , third] = arr;
-console.log(first);
-console.log(third);
-
-const [head, ...tail] = arr;
-console.log(head);
-console.log(tail.join(","));
-
-/* ------------------ OBJECT DESTRUCTURING ------------------ */
 const person = {
-    username: "alok",
-    role: "admin"
+    id: 1
 };
 
-const { username } = person;
-console.log(username);
+map.set(person, "admin");
 
-const { username: userName } = person;
-console.log(userName);
+console.log(map.get(person));
 
-const { missing = "default" } = person;
-console.log(missing);
+/* ---------------- DATE ---------------- */
 
-/* ------------------ FOR OF ------------------ */
-for (const x of [1, 2, 3]) {
-    console.log("forof-" + x);
-}
-
-/* ------------------ ARRAY METHODS ------------------ */
-const nums = [1, 2, 3];
-
-nums.push(4);
-console.log(nums.join(","));
-
-nums.pop();
-console.log(nums.join(","));
-
-console.log(nums.includes(2));
-console.log(nums.indexOf(3));
-
-/* ------------------ SORT ------------------ */
-const sortArr = [100, 2, 25, 1];
-
-sortArr.sort((a, b) => a - b);
-console.log(sortArr.join(","));
-
-sortArr.sort((a, b) => b - a);
-console.log(sortArr.join(","));
-
-/* ------------------ FLAT ------------------ */
-const nested = [1, [2, 3], [4, 5]];
-
-console.log(nested.flat().join(","));
-
-/* ------------------ SPREAD ARRAY ------------------ */
-const spreadCopy = [...nums];
-console.log(spreadCopy.join(","));
-
-/* ------------------ SPREAD OBJECT ------------------ */
-const obj1 = {
-    a: 1,
-    b: 2
-};
-
-const obj2 = {
-    ...obj1,
-    c: 3
-};
-
-console.log(obj2.a);
-console.log(obj2.c);
-
-/* ------------------ FUNCTION DECLARATION ------------------ */
-console.log(add(5, 7));
-
-function add(a, b) {
-    return a + b;
-}
-
-/* ------------------ FUNCTION EXPRESSION ------------------ */
-const sub = function (a, b) {
-    return a - b;
-};
-
-console.log(sub(10, 3));
-
-/* ------------------ DEFAULT PARAM ------------------ */
-function greet(name = "Guest") {
-    return name;
-}
-
-console.log(greet());
-console.log(greet("Rohit"));
-
-/* ------------------ REST PARAM ------------------ */
-function sum(...nums) {
-    let total = 0;
-
-    for (const n of nums) {
-        total += n;
-    }
-
-    return total;
-}
-
-console.log(sum(1, 2, 3, 4));
-
-/* ------------------ CALLBACK ------------------ */
-function calculator(a, b, operation) {
-    return operation(a, b);
-}
-
-console.log(
-    calculator(10, 20, function (x, y) {
-        return x + y;
-    })
-);
-
-/* ------------------ ARROW FUNCTION ------------------ */
-const square = x => x * x;
-
-console.log(square(6));
-
-const makeUser = name => ({ name });
-
-console.log(makeUser("Alok").name);
-
-/* ------------------ MAP ------------------ */
-const mapped = [1, 2, 3].map(x => x * 2);
-console.log(mapped.join(","));
-
-/* ------------------ FILTER ------------------ */
-const filtered = [1, 2, 3, 4].filter(x => x % 2 === 0);
-console.log(filtered.join(","));
-
-/* ------------------ REDUCE ------------------ */
-const reduced = [1, 2, 3, 4].reduce((acc, cur) => acc + cur, 0);
-console.log(reduced);
-
-/* ------------------ FIND ------------------ */
-const found = [5, 10, 15].find(x => x === 10);
-console.log(found);
-
-/* ------------------ SOME ------------------ */
-console.log(
-    [1, 2, 3].some(x => x > 2)
-);
-
-/* ------------------ EVERY ------------------ */
-console.log(
-    [2, 4, 6].every(x => x % 2 === 0)
-);
-
-/* ------------------ DATE ------------------ */
 const d = new Date(2025, 5, 14);
 
 console.log(typeof Date.now());
@@ -217,41 +289,52 @@ console.log(d.getMonth());
 console.log(d.getDate());
 
 d.setFullYear(2030);
+
 console.log(d.getFullYear());
 
-console.log(typeof d.toString());
-console.log(typeof d.toDateString());
+/* ---------------- ARRAY METHODS ---------------- */
 
-/* ------------------ SET ------------------ */
-const s = new Set();
+console.log([1,2,3].includes(2));
+console.log([1,2,3].indexOf(3));
+console.log([1,2,3,2].lastIndexOf(2));
 
-s.add(1);
-s.add(2);
-s.add(2);
+console.log(
+    [1,2,3].join("-")
+);
 
-console.log(s.has(1));
-console.log(s.size);
+console.log(
+    [1,[2,3],[4]].flat().join(",")
+);
 
-s.delete(1);
+console.log(
+    [1,2,3,4].slice(1,3).join(",")
+);
 
-console.log(s.has(1));
+const sp = [1,2,3,4];
+sp.splice(1,2);
 
-for (const v of s) {
-    console.log(v);
-}
+console.log(sp.join(","));
 
-/* ------------------ MAP OBJECT ------------------ */
-const m = new Map();
+/* ---------------- SHIFT UNSHIFT ---------------- */
 
-m.set("name", "Alok");
-m.set("age", 20);
+const q = [2,3];
 
-console.log(m.get("name"));
-console.log(m.has("age"));
-console.log(m.size);
+q.unshift(1);
 
-for (const [k, v] of m) {
-    console.log(k + "=" + v);
-}
+console.log(q.join(","));
 
-console.log("=== ALL TESTS COMPLETED ===");
+q.shift();
+
+console.log(q.join(","));
+
+/* ---------------- OBJECT KEYS VALUES ---------------- */
+
+console.log(
+    Object.keys({a:1,b:2}).join(",")
+);
+
+console.log(
+    Object.values({a:1,b:2}).join(",")
+);
+
+console.log("=== ALL TESTS PASSED ===");

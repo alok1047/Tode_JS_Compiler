@@ -370,7 +370,15 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Object visitIdentifierExpr(Expr.Identifier expr) {
-        return environment.get(expr.name.getLexeme(), expr.name);
+        String name = expr.name.getLexeme();
+        if ("this".equals(name)) {
+            try {
+                return environment.get("this", expr.name);
+            } catch (RuntimeError e) {
+                return JSUndefined.INSTANCE;
+            }
+        }
+        return environment.get(name, expr.name);
     }
 
     @Override
@@ -627,7 +635,19 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     @SuppressWarnings("unchecked")
     public Object visitCallExpr(Expr.Call expr) {
-        Object callee = evaluate(expr.callee);
+        Object callee;
+        Object receiver = null;
+
+        if (expr.callee instanceof Expr.MemberAccess member) {
+            receiver = evaluate(member.object);
+            callee = evaluateMemberAccess(receiver, member.name.getLexeme(), member.name);
+        } else if (expr.callee instanceof Expr.ComputedAccess computed) {
+            receiver = evaluate(computed.object);
+            Object index = evaluate(computed.index);
+            callee = evaluateMemberAccess(receiver, Stringify.toJSString(index), computed.bracket);
+        } else {
+            callee = evaluate(expr.callee);
+        }
 
         if (!callStack.isEmpty()) {
             StackFrame callerFrame = callStack.get(callStack.size() - 1);
@@ -650,7 +670,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             }
         }
 
-        if (callee instanceof JSFunction fn) return callFunction(fn, args);
+        if (callee instanceof JSFunction fn) return callFunction(fn, args, receiver);
         if (callee instanceof JSCallable callable) {
             if (isConsoleLog(expr)) {
                 StringBuilder sb = new StringBuilder();
@@ -794,6 +814,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
      * Call a user-defined function.
      */
     public Object callFunction(JSFunction fn, List<Object> args) {
+        return callFunction(fn, args, null);
+    }
+
+    public Object callFunction(JSFunction fn, List<Object> args, Object thisVal) {
         int line = fn.getParams().isEmpty() ? 0 : fn.getParams().get(0).name.getLine();
         explainEngine.explainCall(fn.name(), line);
         traceEngine.push(fn.name(), line);
@@ -811,6 +835,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         boolean success = false;
         try {
             Environment funcEnv = new Environment(fn.getClosure());
+            if (thisVal != null) {
+                funcEnv.define("this", thisVal);
+            }
 
             List<Expr.Parameter> params = fn.getParams();
             for (int i = 0; i < params.size(); i++) {
@@ -865,30 +892,26 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
     }
 
-    @Override
     @SuppressWarnings("unchecked")
-    public Object visitMemberAccessExpr(Expr.MemberAccess expr) {
-        Object object = evaluate(expr.object);
-        String prop = expr.name.getLexeme();
-
+    private Object evaluateMemberAccess(Object object, String prop, Token token) {
         if (object instanceof DateObject dateObj) {
-            return dateObj.getProperty(prop, expr.name.getLine());
+            return dateObj.getProperty(prop, token != null ? token.getLine() : 0);
         }
         if (object instanceof DateConstructor dateConst) {
             return dateConst.getProperty(prop);
         }
         if (object instanceof SetObject setObj) {
-            return setObj.getProperty(prop, expr.name.getLine());
+            return setObj.getProperty(prop, token != null ? token.getLine() : 0);
         }
         if (object instanceof MapObject mapObj) {
-            return mapObj.getProperty(prop, expr.name.getLine());
+            return mapObj.getProperty(prop, token != null ? token.getLine() : 0);
         }
 
         // ── String properties/methods ───────────────────────────────
-        if (object instanceof String s) return getStringProperty(s, prop, expr.name);
+        if (object instanceof String s) return getStringProperty(s, prop, token);
 
         // ── Array properties/methods ────────────────────────────────
-        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, prop, expr.name);
+        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, prop, token);
 
         // ── Object properties ───────────────────────────────────────
         if (object instanceof LinkedHashMap<?, ?> map) {
@@ -912,14 +935,27 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 if (k instanceof String) keys.add((String) k);
             }
             String closest = SuggestionEngine.suggestProperty(prop, keys);
-            if (closest != null) {
-                throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.name, closest);
+            if (closest != null && token != null) {
+                throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", token, closest);
             }
             return JSUndefined.INSTANCE;
         }
 
-        throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
-                Stringify.stringify(object), expr.name);
+        if (token != null) {
+            throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
+                    Stringify.stringify(object), token);
+        } else {
+            throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
+                    Stringify.stringify(object), 0);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Object visitMemberAccessExpr(Expr.MemberAccess expr) {
+        Object object = evaluate(expr.object);
+        String prop = expr.name.getLexeme();
+        return evaluateMemberAccess(object, prop, expr.name);
     }
 
     @Override
@@ -927,55 +963,22 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     public Object visitComputedAccessExpr(Expr.ComputedAccess expr) {
         Object object = evaluate(expr.object);
         Object index = evaluate(expr.index);
-
-        if (object instanceof DateObject dateObj) {
-            String prop = Stringify.toJSString(index);
-            return dateObj.getProperty(prop, expr.bracket.getLine());
-        }
-        if (object instanceof DateConstructor dateConst) {
-            String prop = Stringify.toJSString(index);
-            return dateConst.getProperty(prop);
-        }
-        if (object instanceof SetObject setObj) {
-            String prop = Stringify.toJSString(index);
-            return setObj.getProperty(prop, expr.bracket.getLine());
-        }
-        if (object instanceof MapObject mapObj) {
-            String prop = Stringify.toJSString(index);
-            return mapObj.getProperty(prop, expr.bracket.getLine());
-        }
+        String prop = Stringify.toJSString(index);
 
         if (object instanceof ArrayList<?> arr) {
-            int idx = (int) toNumber(index);
-            List<Object> list = (List<Object>) arr;
-            if (idx < 0 || idx >= list.size()) return JSUndefined.INSTANCE;
-            return list.get(idx);
-        }
-        if (object instanceof LinkedHashMap<?, ?> map) {
-            String prop = Stringify.toJSString(index);
-            Object val = ((Map<String, Object>) map).get(prop);
-            if (val != null) return val;
-
-            // Prototype lookup
-            if ("hasOwnProperty".equals(prop)) {
-                return (JSCallable) (interpreter, args) -> {
-                    if (args.isEmpty()) return false;
-                    String checkProp = Stringify.toJSString(args.get(0));
-                    return map.containsKey(checkProp);
-                };
-            }
-            if ("toString".equals(prop)) {
-                return (JSCallable) (interpreter, args) -> "[object Object]";
-            }
-            return JSUndefined.INSTANCE;
+            double idxD = toNumber(index);
+            int idx = (int) idxD;
+            if (idx >= 0 && idx < arr.size()) return arr.get(idx);
+            if (idxD == (int) idxD) return JSUndefined.INSTANCE; // Out of bounds integer index
         }
         if (object instanceof String s) {
-            int idx = (int) toNumber(index);
-            if (idx < 0 || idx >= s.length()) return JSUndefined.INSTANCE;
-            return String.valueOf(s.charAt(idx));
+            double idxD = toNumber(index);
+            int idx = (int) idxD;
+            if (idx >= 0 && idx < s.length()) return String.valueOf(s.charAt(idx));
+            if (idxD == (int) idxD) return JSUndefined.INSTANCE; // Out of bounds integer index
         }
-        throw new RuntimeError("TypeError: Cannot read property of " + Stringify.stringify(object),
-                expr.bracket);
+
+        return evaluateMemberAccess(object, prop, expr.bracket);
     }
 
     @Override
@@ -1851,48 +1854,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Object getObjectProperty(Object object, String prop, int line) {
-        if (object instanceof DateObject dateObj) {
-            return dateObj.getProperty(prop, line);
-        }
-        if (object instanceof DateConstructor dateConst) {
-            return dateConst.getProperty(prop);
-        }
-        if (object instanceof SetObject setObj) {
-            return setObj.getProperty(prop, line);
-        }
-        if (object instanceof MapObject mapObj) {
-            return mapObj.getProperty(prop, line);
-        }
-        if (object instanceof String s) {
-            if ("length".equals(prop)) return (double) s.length();
-            try {
-                int idx = Integer.parseInt(prop);
-                if (idx >= 0 && idx < s.length()) {
-                    return String.valueOf(s.charAt(idx));
-                }
-            } catch (NumberFormatException e) {
-                // ignore
-            }
+        try {
+            return evaluateMemberAccess(object, prop, null);
+        } catch (Exception e) {
             return JSUndefined.INSTANCE;
         }
-        if (object instanceof ArrayList<?> arr) {
-            if ("length".equals(prop)) return (double) arr.size();
-            try {
-                int idx = Integer.parseInt(prop);
-                if (idx >= 0 && idx < arr.size()) {
-                    return arr.get(idx);
-                }
-            } catch (NumberFormatException e) {
-                // ignore
-            }
-            return JSUndefined.INSTANCE;
-        }
-        if (object instanceof LinkedHashMap<?, ?> map) {
-            Object val = ((Map<String, Object>) map).get(prop);
-            return val != null ? val : JSUndefined.INSTANCE;
-        }
-        return JSUndefined.INSTANCE;
     }
 }
