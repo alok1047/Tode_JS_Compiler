@@ -1,4 +1,4 @@
-package thunderjs.debugger;
+package features;
 
 import java.util.Set;
 import java.util.TreeSet;

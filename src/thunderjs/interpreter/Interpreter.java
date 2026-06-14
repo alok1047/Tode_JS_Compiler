@@ -8,6 +8,7 @@ import thunderjs.lexer.Token;
 import thunderjs.lexer.TokenType;
 import thunderjs.runtime.*;
 import thunderjs.util.Stringify;
+import thunderjs.util.SuggestionEngine;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,13 +32,37 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     private Environment environment = globals;
 
     // Debugger engines
-    private thunderjs.debugger.CoverageTracker coverageTracker = new thunderjs.debugger.CoverageTracker(false);
-    private thunderjs.debugger.TraceEngine traceEngine = new thunderjs.debugger.TraceEngine(false);
-    private thunderjs.debugger.ExplainEngine explainEngine = new thunderjs.debugger.ExplainEngine(false);
+    private features.CoverageTracker coverageTracker = new features.CoverageTracker(false);
+    private features.TraceEngine traceEngine = new features.TraceEngine(false);
+    private features.ExplainEngine explainEngine = new features.ExplainEngine(false);
 
-    public void setCoverageTracker(thunderjs.debugger.CoverageTracker tracker) { this.coverageTracker = tracker; }
-    public void setTraceEngine(thunderjs.debugger.TraceEngine engine) { this.traceEngine = engine; }
-    public void setExplainEngine(thunderjs.debugger.ExplainEngine engine) { this.explainEngine = engine; }
+    public void setCoverageTracker(features.CoverageTracker tracker) { this.coverageTracker = tracker; }
+    public void setTraceEngine(features.TraceEngine engine) { this.traceEngine = engine; }
+    public void setExplainEngine(features.ExplainEngine engine) { this.explainEngine = engine; }
+
+    // Source context fields
+    private String sourceCode = "";
+    private String fileName = "input.js";
+
+    public void setSourceContext(String source, String fileName) {
+        this.sourceCode = source;
+        this.fileName = fileName != null ? fileName : "input.js";
+    }
+
+    public String getSourceCode() {
+        return sourceCode;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    // Call stack for runtime errors
+    private final List<StackFrame> callStack = new ArrayList<>();
+
+    public List<StackFrame> getCallStack() {
+        return new ArrayList<>(callStack);
+    }
 
     // ── Signal exceptions for control flow ──────────────────────────────
 
@@ -144,6 +169,14 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 execute(stmt);
             }
         } catch (RuntimeError e) {
+            if (e.getCallStack() == null) {
+                if (!callStack.isEmpty()) {
+                    StackFrame top = callStack.get(callStack.size() - 1);
+                    top.line = e.getLine();
+                    top.column = e.getColumn();
+                }
+                e.setCallStack(new ArrayList<>(callStack));
+            }
             traceEngine.printStackTrace(e.getMessage());
             throw e;
         }
@@ -317,7 +350,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Object visitIdentifierExpr(Expr.Identifier expr) {
-        return environment.get(expr.name.getLexeme());
+        return environment.get(expr.name.getLexeme(), expr.name);
     }
 
     @Override
@@ -352,7 +385,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case BANG_EQUAL        -> !looseEquals(left, right);
             case EQUAL_EQUAL_EQUAL -> strictEquals(left, right);
             case BANG_EQUAL_EQUAL  -> !strictEquals(left, right);
-            default -> throw new RuntimeError("Unknown operator: " + expr.operator.getLexeme(), expr.operator.getLine());
+            default -> throw new RuntimeError("Unknown operator: " + expr.operator.getLexeme(), expr.operator);
         };
         explainEngine.explainBinary(expr, result, getLine(expr));
         return result;
@@ -365,8 +398,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case MINUS -> -toNumber(operand);
             case BANG  -> !Stringify.isTruthy(operand);
             case PLUS  -> toNumber(operand);
-            default -> throw new RuntimeError("Unknown unary op: " + expr.operator.getLexeme(),
-                    expr.operator.getLine());
+            default -> throw new RuntimeError("Unknown unary op: " + expr.operator.getLexeme(), expr.operator);
         };
         explainEngine.explainUnary(expr, result, getLine(expr));
         return result;
@@ -386,7 +418,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Object visitAssignExpr(Expr.Assign expr) {
         Object value = evaluate(expr.value);
-        environment.assign(expr.name.getLexeme(), value);
+        environment.assign(expr.name.getLexeme(), value, expr.name);
         explainEngine.explainAssign(expr.name, value, getLine(expr));
         return value;
     }
@@ -401,7 +433,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return value;
         }
         throw new RuntimeError("Cannot set property '" + expr.name.getLexeme() + "' of " +
-                Stringify.stringify(obj), expr.name.getLine());
+                Stringify.stringify(obj), expr.name);
     }
 
     @Override
@@ -423,12 +455,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return value;
         }
         throw new RuntimeError("Cannot set property of " + Stringify.stringify(obj),
-                expr.bracket.getLine());
+                expr.bracket);
     }
 
     @Override
     public Object visitCompoundAssignExpr(Expr.CompoundAssign expr) {
-        Object current = environment.get(expr.name.getLexeme());
+        Object current = environment.get(expr.name.getLexeme(), expr.name);
         Object right = evaluate(expr.value);
         Object result = switch (expr.operator.getType()) {
             case PLUS_EQUAL -> {
@@ -440,18 +472,18 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case STAR_EQUAL    -> toNumber(current) * toNumber(right);
             case SLASH_EQUAL   -> toNumber(current) / toNumber(right);
             case PERCENT_EQUAL -> toNumber(current) % toNumber(right);
-            default -> throw new RuntimeError("Unknown compound op: " + expr.operator.getLexeme());
+            default -> throw new RuntimeError("Unknown compound op: " + expr.operator.getLexeme(), expr.operator);
         };
-        environment.assign(expr.name.getLexeme(), result);
+        environment.assign(expr.name.getLexeme(), result, expr.name);
         return result;
     }
 
     @Override
     public Object visitUpdateExpr(Expr.Update expr) {
-        Object current = environment.get(expr.name.getLexeme());
+        Object current = environment.get(expr.name.getLexeme(), expr.name);
         double val = toNumber(current);
         double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
-        environment.assign(expr.name.getLexeme(), newVal);
+        environment.assign(expr.name.getLexeme(), newVal, expr.name);
         return expr.isPrefix ? newVal : val;
     }
 
@@ -459,6 +491,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @SuppressWarnings("unchecked")
     public Object visitCallExpr(Expr.Call expr) {
         Object callee = evaluate(expr.callee);
+
+        if (!callStack.isEmpty()) {
+            StackFrame callerFrame = callStack.get(callStack.size() - 1);
+            callerFrame.line = expr.paren.getLine();
+            callerFrame.column = expr.paren.getColumn();
+        }
 
         // Evaluate arguments (handle spread)
         List<Object> args = new ArrayList<>();
@@ -468,7 +506,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 if (spreadVal instanceof ArrayList<?> arr) {
                     args.addAll((List<Object>) arr);
                 } else {
-                    throw new RuntimeError("Cannot spread non-iterable", expr.paren.getLine());
+                    throw new RuntimeError("Cannot spread non-iterable", expr.paren);
                 }
             } else {
                 args.add(evaluate(arg));
@@ -485,19 +523,65 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 }
                 explainEngine.explainPrint(sb.toString(), expr.paren.getLine());
             } else {
-                String calleeName = thunderjs.debugger.ASTPrinter.SourceCodeReconstructor.toSource(expr.callee);
+                String calleeName = features.ASTPrinter.SourceCodeReconstructor.toSource(expr.callee);
                 explainEngine.explainCall(calleeName, expr.paren.getLine());
             }
             return callable.call(this, args);
         }
 
+        if (callee == JSUndefined.INSTANCE) {
+            String prop = null;
+            Token errorToken = expr.paren;
+            Object obj = null;
+            if (expr.callee instanceof Expr.MemberAccess member) {
+                obj = evaluate(member.object);
+                prop = member.name.getLexeme();
+                errorToken = member.name;
+            } else if (expr.callee instanceof Expr.ComputedAccess computed) {
+                obj = evaluate(computed.object);
+                Object index = evaluate(computed.index);
+                prop = Stringify.toJSString(index);
+                errorToken = computed.bracket;
+            }
+            if (obj != null && prop != null) {
+                java.util.List<String> candidates = null;
+                if (obj == globals.get("Math")) {
+                    candidates = java.util.List.of("PI", "E", "floor", "ceil", "round", "abs", "sqrt", "pow", "random", "max", "min");
+                } else if (obj == globals.get("Object")) {
+                    candidates = java.util.List.of("keys", "values", "entries");
+                } else if (obj == globals.get("console")) {
+                    candidates = java.util.List.of("log");
+                } else if (obj instanceof thunderjs.runtime.DateConstructor) {
+                    candidates = java.util.List.of("now", "parse", "UTC");
+                } else if (obj instanceof thunderjs.runtime.DateObject) {
+                    candidates = java.util.List.of("getFullYear", "getMonth", "getDate", "getDay", "getHours", "getMinutes", "getSeconds", "getMilliseconds", "getTime", "getTimezoneOffset", "setFullYear", "setMonth", "setDate", "setHours", "setMinutes", "setSeconds", "setMilliseconds", "setTime", "toString", "toISOString", "toUTCString", "toDateString", "toTimeString", "toJSON", "valueOf");
+                } else if (obj instanceof String) {
+                    candidates = java.util.List.of("toUpperCase", "toLowerCase", "trim", "trimStart", "trimEnd", "split", "replace", "replaceAll", "substring", "slice", "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith", "charAt", "charCodeAt", "repeat", "padStart", "padEnd", "concat");
+                } else if (obj instanceof ArrayList<?>) {
+                    candidates = java.util.List.of("length", "push", "pop", "shift", "unshift", "reverse", "join", "concat", "slice", "indexOf", "lastIndexOf", "includes", "forEach", "map", "filter", "reduce", "find", "findIndex", "some", "every", "flat", "fill");
+                }
+                if (candidates != null) {
+                    String closest = SuggestionEngine.suggestProperty(prop, candidates);
+                    if (closest != null) {
+                        throw new RuntimeError("TypeError: " + prop + " is not a function", errorToken, closest);
+                    }
+                }
+            }
+        }
+
         throw new RuntimeError("TypeError: " + Stringify.stringify(callee) + " is not a function",
-                expr.paren.getLine());
+                expr.paren);
     }
 
     @Override
     public Object visitNewExpr(Expr.New expr) {
         Object constructor = evaluate(expr.constructor);
+
+        if (!callStack.isEmpty()) {
+            StackFrame callerFrame = callStack.get(callStack.size() - 1);
+            callerFrame.line = expr.keyword.getLine();
+            callerFrame.column = expr.keyword.getColumn();
+        }
 
         List<Object> args = new ArrayList<>();
         if (expr.arguments != null) {
@@ -507,7 +591,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     if (spreadVal instanceof ArrayList<?> arr) {
                         args.addAll((List<Object>) arr);
                     } else {
-                        throw new RuntimeError("Cannot spread non-iterable", expr.keyword.getLine());
+                        throw new RuntimeError("Cannot spread non-iterable", expr.keyword);
                     }
                 } else {
                     args.add(evaluate(arg));
@@ -549,7 +633,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
 
         throw new RuntimeError("TypeError: " + Stringify.stringify(constructor) + " is not a constructor",
-                expr.keyword.getLine());
+                expr.keyword);
     }
 
     private boolean isConsoleLog(Expr.Call call) {
@@ -571,6 +655,17 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         explainEngine.explainCall(fn.name(), line);
         traceEngine.push(fn.name(), line);
 
+        List<String> paramNames = new ArrayList<>();
+        for (Expr.Parameter p : fn.getParams()) {
+            paramNames.add(p.name.getLexeme());
+        }
+        traceEngine.beforeCall(fn.name(), args, paramNames);
+
+        StackFrame frame = new StackFrame(fn.name(), -1, -1);
+        callStack.add(frame);
+
+        Object result = null;
+        boolean success = false;
         try {
             Environment funcEnv = new Environment(fn.getClosure());
 
@@ -593,18 +688,37 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 Environment previous = this.environment;
                 try {
                     this.environment = funcEnv;
-                    return evaluate(fn.getConciseBody());
+                    result = evaluate(fn.getConciseBody());
+                    success = true;
+                    return result;
                 } finally { this.environment = previous; }
             }
 
             try {
                 executeBlock(fn.getBody(), funcEnv);
             } catch (ReturnSignal ret) {
-                return ret.value;
+                result = ret.value;
+                success = true;
+                return result;
             }
-            return JSUndefined.INSTANCE;
+            result = JSUndefined.INSTANCE;
+            success = true;
+            return result;
+        } catch (RuntimeError e) {
+            if (e.getCallStack() == null) {
+                frame.line = e.getLine();
+                frame.column = e.getColumn();
+                e.setCallStack(new ArrayList<>(callStack));
+            }
+            throw e;
         } finally {
+            if (success) {
+                traceEngine.afterCall(fn.name(), result);
+            }
             traceEngine.pop();
+            if (!callStack.isEmpty()) {
+                callStack.remove(callStack.size() - 1);
+            }
         }
     }
 
@@ -622,19 +736,29 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
 
         // ── String properties/methods ───────────────────────────────
-        if (object instanceof String s) return getStringProperty(s, prop);
+        if (object instanceof String s) return getStringProperty(s, prop, expr.name);
 
         // ── Array properties/methods ────────────────────────────────
-        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, prop);
+        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, prop, expr.name);
 
         // ── Object properties ───────────────────────────────────────
         if (object instanceof LinkedHashMap<?, ?> map) {
             Object val = ((Map<String, Object>) map).get(prop);
+            if (val == null) {
+                java.util.List<String> keys = new java.util.ArrayList<>();
+                for (Object k : map.keySet()) {
+                    if (k instanceof String) keys.add((String) k);
+                }
+                String closest = SuggestionEngine.suggestProperty(prop, keys);
+                if (closest != null) {
+                    throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.name, closest);
+                }
+            }
             return val != null ? val : JSUndefined.INSTANCE;
         }
 
         throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
-                Stringify.stringify(object), expr.name.getLine());
+                Stringify.stringify(object), expr.name);
     }
 
     @Override
@@ -659,7 +783,18 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return list.get(idx);
         }
         if (object instanceof LinkedHashMap<?, ?> map) {
-            Object val = ((Map<String, Object>) map).get(Stringify.toJSString(index));
+            String prop = Stringify.toJSString(index);
+            Object val = ((Map<String, Object>) map).get(prop);
+            if (val == null) {
+                java.util.List<String> keys = new java.util.ArrayList<>();
+                for (Object k : map.keySet()) {
+                    if (k instanceof String) keys.add((String) k);
+                }
+                String closest = SuggestionEngine.suggestProperty(prop, keys);
+                if (closest != null) {
+                    throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.bracket, closest);
+                }
+            }
             return val != null ? val : JSUndefined.INSTANCE;
         }
         if (object instanceof String s) {
@@ -668,7 +803,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return String.valueOf(s.charAt(idx));
         }
         throw new RuntimeError("TypeError: Cannot read property of " + Stringify.stringify(object),
-                expr.bracket.getLine());
+                expr.bracket);
     }
 
     @Override
@@ -679,7 +814,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             if (el instanceof Expr.Spread spread) {
                 Object sv = evaluate(spread.expression);
                 if (sv instanceof ArrayList<?> arr) elements.addAll((List<Object>) arr);
-                else throw new RuntimeError("Cannot spread non-iterable", expr.bracket.getLine());
+                else throw new RuntimeError("Cannot spread non-iterable", expr.bracket);
             } else {
                 elements.add(evaluate(el));
             }
@@ -803,7 +938,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     // ── String methods ──────────────────────────────────────────────────
 
-    private Object getStringProperty(String s, String prop) {
+    private Object getStringProperty(String s, String prop, Token token) {
         return switch (prop) {
             case "length"      -> (double) s.length();
             case "toUpperCase" -> (JSCallable) (i, a) -> s.toUpperCase();
@@ -889,14 +1024,14 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             };
             case "toString" -> (JSCallable) (i, a) -> s;
             default -> throw new RuntimeError(
-                    "TypeError: \"" + s + "\"." + prop + " is not a function");
+                    "TypeError: \"" + s + "\"." + prop + " is not a function", token);
         };
     }
 
     // ── Array methods ───────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
-    private Object getArrayProperty(List<Object> arr, String prop) {
+    private Object getArrayProperty(List<Object> arr, String prop, Token token) {
         return switch (prop) {
             case "length" -> (double) arr.size();
             case "push"    -> (JSCallable) (i, a) -> { arr.addAll(a); return (double) arr.size(); };
@@ -994,7 +1129,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 JSFunction fn = (JSFunction) a.get(0);
                 Object acc; int startIdx;
                 if (a.size() > 1) { acc = a.get(1); startIdx = 0; }
-                else { if (arr.isEmpty()) throw new RuntimeError("Reduce of empty array with no initial value"); acc = arr.get(0); startIdx = 1; }
+                else { if (arr.isEmpty()) throw new RuntimeError("Reduce of empty array with no initial value", token); acc = arr.get(0); startIdx = 1; }
                 for (int j = startIdx; j < arr.size(); j++) {
                     List<Object> cb = new ArrayList<>(); cb.add(acc); cb.add(arr.get(j)); cb.add((double)j); cb.add(arr);
                     acc = callFunction(fn, cb);
@@ -1054,7 +1189,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 for (int j = Math.max(0,start); j < Math.min(arr.size(),end); j++) arr.set(j, fv);
                 return arr;
             };
-            default -> throw new RuntimeError("TypeError: arr." + prop + " is not a function");
+            default -> throw new RuntimeError("TypeError: arr." + prop + " is not a function", token);
         };
     }
 

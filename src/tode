@@ -14,8 +14,8 @@ COMPILE_NEEDED=false
 if [ ! -f "out/thunderjs/Main.class" ]; then
     COMPILE_NEEDED=true
 else
-    # Find if any .java file in src is newer than out/thunderjs/Main.class
-    if [ -n "$(find src -name "*.java" -newer out/thunderjs/Main.class 2>/dev/null)" ]; then
+    # Find if any .java file in src or features is newer than out/thunderjs/Main.class
+    if [ -n "$(find src features -name "*.java" -newer out/thunderjs/Main.class 2>/dev/null)" ]; then
         COMPILE_NEEDED=true
     fi
 fi
@@ -23,7 +23,7 @@ fi
 if [ "$COMPILE_NEEDED" = true ]; then
     echo "⚡ Compiling Tode Runtime..."
     mkdir -p out
-    javac -d out $(find src -name "*.java")
+    javac -d out $(find src features -name "*.java")
 fi
 
 # Run the runtime, forwarding all parameters

@@ -1,4 +1,4 @@
-package thunderjs;
+package tests;
 
 import thunderjs.ast.Stmt;
 import thunderjs.interpreter.Interpreter;
@@ -16,11 +16,11 @@ import java.util.TreeMap;
 
 public class TestRunner {
     private static final Map<String, String> EXPECTED_OUTPUTS = new TreeMap<>(Map.of(
-        "examples/test1_oddeven.js", "7 is Odd\n",
-        "examples/test2_triangle.js", "*\n**\n***\n****\n*****\n",
-        "examples/test3_armstrong.js", "true\nfalse\n",
-        "examples/test4_array.js", "1 2 3 4 5\n5 4 3 2 1\n",
-        "examples/test5_palindrome.js", "racecar is a palindrome\n"
+        "tests/odd_even.js", "7 is Odd\n",
+        "tests/pattern.js", "*\n**\n***\n****\n*****\n",
+        "tests/armstrong.js", "true\nfalse\n",
+        "tests/reverseArray.js", "Original: 1, 2, 3, 4, 5\nReversed: 5, 4, 3, 2, 1\n",
+        "tests/palindrome.js", "racecar is a Palindrome\n"
     ));
 
     public static void main(String[] args) {
@@ -38,7 +38,31 @@ public class TestRunner {
             System.out.printf("Test: %-30s ... ", filepath);
 
             try {
-                String source = Files.readString(Path.of(filepath));
+                String source;
+                Path path = Path.of(filepath);
+                if (Files.exists(path)) {
+                    source = Files.readString(path);
+                } else if (filepath.startsWith("tests/") && Files.exists(Path.of(filepath.substring("tests/".length())))) {
+                    source = Files.readString(Path.of(filepath.substring("tests/".length())));
+                } else if (Files.exists(Path.of("..", filepath))) {
+                    source = Files.readString(Path.of("..", filepath));
+                } else {
+                    // Load from classpath resource
+                    java.io.InputStream is = TestRunner.class.getResourceAsStream("/" + filepath);
+                    if (is == null) {
+                        is = TestRunner.class.getResourceAsStream(filepath);
+                    }
+                    if (is == null && filepath.startsWith("tests/")) {
+                        is = TestRunner.class.getResourceAsStream("/" + filepath.substring("tests/".length()));
+                    }
+                    if (is != null) {
+                        try (java.io.InputStream resourceStream = is) {
+                            source = new String(resourceStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                    } else {
+                        throw new java.io.FileNotFoundException("Could not locate test file: " + filepath);
+                    }
+                }
 
                 // Capture standard output
                 PrintStream originalOut = System.out;

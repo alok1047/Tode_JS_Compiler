@@ -1,4 +1,4 @@
-package thunderjs.debugger;
+package features;
 
 import thunderjs.ast.Stmt;
 import thunderjs.runtime.Environment;
@@ -51,9 +51,12 @@ public class TraceEngine {
         }
         stepCount++;
         System.out.println();
-        System.out.printf("[Step %d]\n", stepCount);
-        System.out.println("Execute:");
-        System.out.println(ASTPrinter.SourceCodeReconstructor.toSource(stmt));
+        System.out.printf("▶ Step %d\n", stepCount);
+        System.out.println("  Execute:");
+        String source = ASTPrinter.SourceCodeReconstructor.toSource(stmt);
+        for (String line : source.split("\n")) {
+            System.out.println("    " + line);
+        }
         lastValue = null;
         lastConsoleOutput = null;
     }
@@ -61,17 +64,16 @@ public class TraceEngine {
     public void afterExecute(Stmt stmt, Environment env) {
         if (!enabled) return;
         if (lastConsoleOutput != null) {
-            System.out.println();
-            System.out.println("Output:");
-            System.out.println(lastConsoleOutput);
+            System.out.println("  Output:");
+            for (String line : lastConsoleOutput.split("\n")) {
+                System.out.println("    " + line);
+            }
             lastConsoleOutput = null;
         } else if (lastValue != null && (stmt instanceof Stmt.VarDeclaration || stmt instanceof Stmt.ExpressionStmt)) {
-            System.out.println();
-            System.out.println("Result:");
-            System.out.println(Stringify.stringify(lastValue));
+            System.out.println("  Result:");
+            System.out.println("    " + Stringify.stringify(lastValue));
         }
-        System.out.println();
-        System.out.println("Environment:");
+        System.out.println("  Variables:");
         System.out.println(formatEnvironment(collectVariables(env)));
     }
 
@@ -85,7 +87,8 @@ public class TraceEngine {
                 if (name.equals("NaN") || name.equals("Infinity") || name.equals("undefined") ||
                     name.equals("String") || name.equals("Number") || name.equals("Boolean") ||
                     name.equals("parseInt") || name.equals("parseFloat") || name.equals("isNaN") ||
-                    name.equals("console") || name.equals("Math") || name.equals("Object")) {
+                    name.equals("console") || name.equals("Math") || name.equals("Object") ||
+                    name.equals("Date")) {
                     continue;
                 }
                 if (!allVars.containsKey(name)) {
@@ -99,19 +102,59 @@ public class TraceEngine {
 
     private String formatEnvironment(Map<String, Object> vars) {
         if (vars.isEmpty()) {
-            return "{}";
+            return "  {}";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("{\n");
+        sb.append("  {\n");
         int count = 0;
         for (Map.Entry<String, Object> entry : vars.entrySet()) {
-            sb.append("  ").append(entry.getKey()).append(": ").append(Stringify.stringify(entry.getValue()));
+            sb.append("    ").append(entry.getKey()).append(": ").append(Stringify.stringify(entry.getValue()));
             if (++count < vars.size()) {
                 sb.append(",");
             }
             sb.append("\n");
         }
-        sb.append("}");
+        sb.append("  }");
+        return sb.toString();
+    }
+
+    public void beforeCall(String name, List<Object> args, List<String> paramNames) {
+        if (!enabled) return;
+        System.out.println();
+        System.out.printf("▶ Call %s(%s)\n", name != null ? name : "anonymous", formatArgumentsInline(args));
+        System.out.println("  Arguments:");
+        System.out.println(formatArgumentsBlock(paramNames, args));
+    }
+
+    public void afterCall(String name, Object result) {
+        if (!enabled) return;
+        System.out.printf("◀ Return %s() → %s\n", name != null ? name : "anonymous", Stringify.stringify(result));
+    }
+
+    private String formatArgumentsInline(List<Object> args) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(Stringify.stringify(args.get(i)));
+        }
+        return sb.toString();
+    }
+
+    private String formatArgumentsBlock(List<String> paramNames, List<Object> args) {
+        if (args.isEmpty()) {
+            return "  {}";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("  {\n");
+        for (int i = 0; i < args.size(); i++) {
+            String paramName = (paramNames != null && i < paramNames.size()) ? paramNames.get(i) : "arg" + i;
+            sb.append("    ").append(paramName).append(": ").append(Stringify.stringify(args.get(i)));
+            if (i < args.size() - 1) {
+                sb.append(",");
+            }
+            sb.append("\n");
+        }
+        sb.append("  }");
         return sb.toString();
     }
 
@@ -131,7 +174,6 @@ public class TraceEngine {
 
     public void printStackTrace(String errorMessage) {
         if (!enabled) {
-            System.err.println(errorMessage);
             return;
         }
         System.err.println("Uncaught RuntimeError: " + errorMessage);
