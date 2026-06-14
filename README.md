@@ -1,9 +1,9 @@
+# ⚡ Tode (Mini JavaScript Interpreter)
 <p align="center">
 
   <img src="screenshots/extras/image.png" width="750">
 
 </p>
-# ⚡ Tode (Powered by ThunderJS)
 
 ### 📖 About
 Tode is a high-performance JavaScript runtime built completely from scratch in Java 21, without any external scripting engines (like Nashorn, Rhino, or GraalJS) or parser libraries. It features a handwritten lexer, parser, AST-based interpreter, REPL, and a rich developer experience with advanced source-mapped error diagnostics and suggestion-based recovery.
