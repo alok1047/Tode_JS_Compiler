@@ -32,6 +32,16 @@ java -jar tode.jar
 </p>
 ---
 
+### Execute JavaScript via Standard Input (stdin)
+
+```bash
+echo 'console.log("alok")' | java -jar tode.jar
+```
+
+<p align="center">
+  <img src="screenshots/extras/stdin.png" width="700">
+</p>
+
 ## 🧪 Testing Suite (For Judges)
 
 We provide two distinct runners to validate JavaScript compatibility, stress test edge cases, and run benchmarks:
@@ -42,7 +52,7 @@ Runs the 5 standard verification test cases (Armstrong numbers, Odd/Even check, 
 java -cp tode.jar tests.TestRunner
 ```
 <p align="center">
-  <img src="screenshots/extras/testRunner.png" width="700">
+  <img src="screenshots/extras/testRunner.png" width="500">
 </p>
 
 ### 2. Comprehensive Stress Tester
@@ -52,7 +62,7 @@ java -cp tode.jar tests.StressTester
 ```
 
 <p align="center">
-  <img src="screenshots/extras/stressRunner.png" width="700">
+  <img src="screenshots/extras/stressRunner.png" width="500">
 </p>
 
 ---
