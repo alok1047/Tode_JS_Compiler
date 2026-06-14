@@ -1,5 +1,7 @@
 package thunderjs.runtime;
 
+import thunderjs.lexer.Token;
+import thunderjs.util.SuggestionEngine;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,7 +69,28 @@ public class Environment {
         if (parent != null) {
             return parent.get(name);
         }
+        String closest = SuggestionEngine.suggestVariable(name, this);
+        if (closest != null) {
+            throw new RuntimeError("ReferenceError: " + name + " is not defined\n\n💡 Did you mean:\n   " + closest);
+        }
         throw new RuntimeError("ReferenceError: " + name + " is not defined");
+    }
+
+    /**
+     * Get the value of a variable by name, using a Token for diagnostics.
+     */
+    public Object get(String name, Token token) {
+        if (values.containsKey(name)) {
+            return values.get(name);
+        }
+        if (parent != null) {
+            return parent.get(name, token);
+        }
+        String closest = SuggestionEngine.suggestVariable(name, this);
+        if (closest != null) {
+            throw new RuntimeError("ReferenceError: " + name + " is not defined", token, closest);
+        }
+        throw new RuntimeError("ReferenceError: " + name + " is not defined", token);
     }
 
     /**
@@ -97,7 +120,44 @@ public class Environment {
             parent.assign(name, value);
             return;
         }
+        String closest = SuggestionEngine.suggestVariable(name, this);
+        if (closest != null) {
+            throw new RuntimeError("ReferenceError: " + name + " is not defined\n\n💡 Did you mean:\n   " + closest);
+        }
         throw new RuntimeError("ReferenceError: " + name + " is not defined");
+    }
+
+    /**
+     * Assign a new value to an existing variable, using a Token for diagnostics.
+     */
+    public void assign(String name, Object value, Token token) {
+        if (values.containsKey(name)) {
+            if (constants.containsKey(name)) {
+                throw new RuntimeError("TypeError: Assignment to constant variable '" + name + "'", token);
+            }
+            values.put(name, value);
+            return;
+        }
+        if (parent != null) {
+            parent.assign(name, value, token);
+            return;
+        }
+        String closest = SuggestionEngine.suggestVariable(name, this);
+        if (closest != null) {
+            throw new RuntimeError("ReferenceError: " + name + " is not defined", token, closest);
+        }
+        throw new RuntimeError("ReferenceError: " + name + " is not defined", token);
+    }
+
+    /**
+     * Get all variable names visible in the current environment and parent scope chains.
+     */
+    public java.util.Set<String> getAllVisibleNames() {
+        java.util.Set<String> names = new java.util.HashSet<>(values.keySet());
+        if (parent != null) {
+            names.addAll(parent.getAllVisibleNames());
+        }
+        return names;
     }
 
     /**

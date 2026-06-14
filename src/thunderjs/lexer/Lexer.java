@@ -419,15 +419,29 @@ public class Lexer {
     // ── Error reporting ─────────────────────────────────────────────────
 
     private void error(String message) {
-        throw new LexerError("SyntaxError: " + message + " at line " + line + ", column " + startColumn);
+        throw new LexerError(message, line, startColumn);
     }
 
     /**
      * Exception thrown when the lexer encounters invalid input.
      */
     public static class LexerError extends RuntimeException {
+        private final int line;
+        private final int column;
+
+        public LexerError(String message, int line, int column) {
+            super(message);
+            this.line = line;
+            this.column = column;
+        }
+
         public LexerError(String message) {
             super(message);
+            this.line = -1;
+            this.column = -1;
         }
+
+        public int getLine() { return line; }
+        public int getColumn() { return column; }
     }
 }

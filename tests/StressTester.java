@@ -1,4 +1,4 @@
-package thunderjs;
+package tests;
 
 import thunderjs.ast.Stmt;
 import thunderjs.interpreter.Interpreter;
@@ -351,7 +351,11 @@ public class StressTester {
         report.append("* **Failed:** ").append(failed).append("\n");
         report.append("* **Success Rate:** ").append((double) passed / tests.size() * 100).append("%\n");
 
-        try (FileWriter writer = new FileWriter("/Users/alokagrahari/.gemini/antigravity/brain/681a317c-462d-45e5-bc23-ffca186826c5/hidden_test_report.md")) {
+        String reportPath = "tests/hidden_test_report.md";
+        if (!java.nio.file.Files.exists(java.nio.file.Path.of("tests")) && java.nio.file.Files.exists(java.nio.file.Path.of("StressTester.java"))) {
+            reportPath = "hidden_test_report.md";
+        }
+        try (FileWriter writer = new java.io.FileWriter(reportPath)) {
             writer.write(report.toString());
         } catch (IOException e) {
             e.printStackTrace();

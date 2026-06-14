@@ -992,13 +992,30 @@ public class Parser {
     private ParseError error(Token token, String message) {
         String location = token.getType() == TokenType.EOF ? "end of input" :
                 "'" + token.getLexeme() + "'";
-        return new ParseError("SyntaxError: " + message + " at " + location +
-                " (line " + token.getLine() + ", col " + token.getColumn() + ")");
+        return new ParseError(message + " at " + location, token.getLine(), token.getColumn(), token.getLexeme());
     }
 
     public static class ParseError extends RuntimeException {
+        private final int line;
+        private final int column;
+        private final String lexeme;
+
+        public ParseError(String message, int line, int column, String lexeme) {
+            super(message);
+            this.line = line;
+            this.column = column;
+            this.lexeme = lexeme;
+        }
+
         public ParseError(String message) {
             super(message);
+            this.line = -1;
+            this.column = -1;
+            this.lexeme = null;
         }
+
+        public int getLine() { return line; }
+        public int getColumn() { return column; }
+        public String getLexeme() { return lexeme; }
     }
 }

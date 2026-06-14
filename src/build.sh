@@ -14,7 +14,10 @@ rm -f tode.jar
 # Compile Java source files to out/
 echo "⚡ Compiling Java source files..."
 mkdir -p out
-javac -d out $(find src -name "*.java")
+javac -d out $(find src features tests -name "*.java")
+
+# Copy test resource files to out/ so they are packaged into the jar
+cp -R tests out/
 
 # Package into executable JAR at root
 echo "📦 Packaging executable tode.jar..."

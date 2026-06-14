@@ -1,4 +1,4 @@
-package thunderjs.debugger;
+package features;
 
 import thunderjs.ast.Expr;
 import thunderjs.ast.Stmt;
