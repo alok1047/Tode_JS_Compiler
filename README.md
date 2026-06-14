@@ -15,9 +15,13 @@ Tode is a high-performance JavaScript runtime built completely from scratch in J
 ### Prerequisites
 - **Java 21+** (Verify using `java --version`)
 
-### Run a JavaScript File
+## 🚀 Quick Start
+
 ```bash
-java -jar tode.jar <path-to-file.js>
+git clone https://github.com/alok1047/Tode_JS_Compiler.git
+cd Tode_JS_Compiler
+
+java -jar tode.jar tests/basic/pattern.js
 ```
 <p align="center">
   <img src="screenshots/extras/file_Input.png" width="700">
