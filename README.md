@@ -1,6 +1,6 @@
 <p align="center">
 
-  <img src="screenshots/image.png" width="800">
+  <img src="screenshots/extras/image.png" width="750">
 
 </p>
 # ⚡ Tode (Powered by ThunderJS)
@@ -19,6 +19,9 @@ Tode is a high-performance JavaScript runtime built completely from scratch in J
 ```bash
 java -jar tode.jar <path-to-file.js>
 ```
+<p align="center">
+  <img src="screenshots/extras/file_Input.png" width="700">
+</p>
 
 ### Start the Interactive REPL
 ```bash
@@ -38,13 +41,19 @@ Runs the 5 standard verification test cases (Armstrong numbers, Odd/Even check, 
 ```bash
 java -cp tode.jar tests.TestRunner
 ```
+<p align="center">
+  <img src="screenshots/extras/testRunner.png" width="700">
+</p>
 
 ### 2. Comprehensive Stress Tester
 Recursively scans the test suite, parses assertions, runs individual sandboxed processes, and generates a markdown report:
 ```bash
 java -cp tode.jar tests.StressTester
 ```
-*Tip: Detailed execution reports are saved to `tests/hidden_test_report.md`.*
+
+<p align="center">
+  <img src="screenshots/extras/stressRunner.png" width="700">
+</p>
 
 ---
 
