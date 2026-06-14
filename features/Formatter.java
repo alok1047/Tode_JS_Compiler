@@ -82,6 +82,57 @@ public class Formatter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     }
 
     @Override
+    public String visitDestructuredVarDeclarationStmt(Stmt.DestructuredVarDeclaration stmt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(indent()).append(stmt.keyword.getLexeme()).append(" ").append(stmt.pattern.accept(this));
+        if (stmt.initializer != null) {
+            sb.append(" = ").append(stmt.initializer.accept(this));
+        }
+        sb.append(";\n");
+        return sb.toString();
+    }
+
+    @Override
+    public String visitForInStmt(Stmt.ForIn stmt) {
+        String init = stmt.initializer.accept(this).trim();
+        if (init.endsWith(";")) {
+            init = init.substring(0, init.length() - 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(indent()).append("for (").append(init).append(" in ").append(stmt.object.accept(this)).append(") ");
+        if (stmt.body instanceof Stmt.Block block) {
+            sb.append(formatBlock(block.statements));
+        } else {
+            sb.append("\n");
+            indentLevel++;
+            sb.append(stmt.body.accept(this));
+            indentLevel--;
+        }
+        sb.append("\n");
+        return sb.toString();
+    }
+
+    @Override
+    public String visitForOfStmt(Stmt.ForOf stmt) {
+        String init = stmt.initializer.accept(this).trim();
+        if (init.endsWith(";")) {
+            init = init.substring(0, init.length() - 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(indent()).append("for (").append(init).append(" of ").append(stmt.iterable.accept(this)).append(") ");
+        if (stmt.body instanceof Stmt.Block block) {
+            sb.append(formatBlock(block.statements));
+        } else {
+            sb.append("\n");
+            indentLevel++;
+            sb.append(stmt.body.accept(this));
+            indentLevel--;
+        }
+        sb.append("\n");
+        return sb.toString();
+    }
+
+    @Override
     public String visitBlockStmt(Stmt.Block stmt) {
         return indent() + formatBlock(stmt.statements) + "\n";
     }
@@ -280,6 +331,21 @@ public class Formatter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     }
 
     @Override
+    public String visitDestructuredAssignExpr(Expr.DestructuredAssign expr) {
+        return expr.pattern.accept(this) + " = " + expr.value.accept(this);
+    }
+
+    @Override
+    public String visitDeleteExpr(Expr.DeleteExpr expr) {
+        return "delete " + expr.operand.accept(this);
+    }
+
+    @Override
+    public String visitDefaultValExpr(Expr.DefaultVal expr) {
+        return expr.target.accept(this) + " = " + expr.defaultValue.accept(this);
+    }
+
+    @Override
     public String visitMemberAssignExpr(Expr.MemberAssign expr) {
         return expr.object.accept(this) + "." + expr.name.getLexeme() + " = " + expr.value.accept(this);
     }
@@ -340,11 +406,18 @@ public class Formatter implements Expr.Visitor<String>, Stmt.Visitor<String> {
         StringBuilder sb = new StringBuilder();
         sb.append("{ ");
         for (int i = 0; i < expr.keys.size(); i++) {
-            String key = expr.keys.get(i);
+            Object key = expr.keys.get(i);
             if (key == null) {
                 sb.append("...").append(expr.values.get(i).accept(this));
+            } else if (key instanceof Expr keyExpr) {
+                sb.append("[").append(keyExpr.accept(this)).append("]: ").append(expr.values.get(i).accept(this));
             } else {
-                sb.append(key).append(": ").append(expr.values.get(i).accept(this));
+                Expr value = expr.values.get(i);
+                if (value instanceof Expr.Identifier id && id.name.getLexeme().equals(key)) {
+                    sb.append(key);
+                } else {
+                    sb.append((String) key).append(": ").append(value.accept(this));
+                }
             }
             if (i < expr.keys.size() - 1) sb.append(", ");
         }

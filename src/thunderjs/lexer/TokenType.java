@@ -40,6 +40,9 @@ public enum TokenType {
     RETURN,
     TYPEOF,
     NEW,
+    IN,
+    DELETE,
+    OF,
 
     // ── Arithmetic Operators ────────────────────────────────────────────
     PLUS,               // +

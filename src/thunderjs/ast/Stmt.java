@@ -28,6 +28,9 @@ public abstract class Stmt {
         R visitSwitchStmt(Switch stmt);
         R visitBreakStmt(Break stmt);
         R visitContinueStmt(Continue stmt);
+        R visitDestructuredVarDeclarationStmt(DestructuredVarDeclaration stmt);
+        R visitForInStmt(ForIn stmt);
+        R visitForOfStmt(ForOf stmt);
     }
 
     public abstract <R> R accept(Visitor<R> visitor);
@@ -268,6 +271,66 @@ public abstract class Stmt {
         @Override
         public <R> R accept(Visitor<R> visitor) {
             return visitor.visitContinueStmt(this);
+        }
+    }
+
+    /**
+     * Destructured variable declaration: const {name, age} = person
+     */
+    public static class DestructuredVarDeclaration extends Stmt {
+        public final Token keyword;        // let, const, or var
+        public final Expr pattern;         // ArrayLiteral or ObjectLiteral
+        public final Expr initializer;     // nullable (e.g. inside for...in initializer)
+
+        public DestructuredVarDeclaration(Token keyword, Expr pattern, Expr initializer) {
+            this.keyword = keyword;
+            this.pattern = pattern;
+            this.initializer = initializer;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitDestructuredVarDeclarationStmt(this);
+        }
+    }
+
+    /**
+     * For...in loop statement: for (const key in obj) body
+     */
+    public static class ForIn extends Stmt {
+        public final Stmt initializer;    // VarDeclaration, DestructuredVarDeclaration, or ExpressionStmt
+        public final Expr object;
+        public final Stmt body;
+
+        public ForIn(Stmt initializer, Expr object, Stmt body) {
+            this.initializer = initializer;
+            this.object = object;
+            this.body = body;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitForInStmt(this);
+        }
+    }
+
+    /**
+     * For...of loop statement: for (const item of iterable) body
+     */
+    public static class ForOf extends Stmt {
+        public final Stmt initializer;    // VarDeclaration, DestructuredVarDeclaration, or ExpressionStmt
+        public final Expr iterable;
+        public final Stmt body;
+
+        public ForOf(Stmt initializer, Expr iterable, Stmt body) {
+            this.initializer = initializer;
+            this.iterable = iterable;
+            this.body = body;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitForOfStmt(this);
         }
     }
 }

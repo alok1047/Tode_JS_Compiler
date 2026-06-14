@@ -165,11 +165,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
         globals.define("Object", objectObj);
         globals.define("Date", new DateConstructor());
+        globals.define("Set", new SetConstructor());
     }
 
     // ── Public API ──────────────────────────────────────────────────────
 
     public void interpret(List<Stmt> statements) {
+        hoistFunctions(statements, this.environment);
         try {
             for (Stmt stmt : statements) {
                 execute(stmt);
@@ -206,12 +208,23 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     public void executeBlock(List<Stmt> statements, Environment env) {
+        hoistFunctions(statements, env);
         Environment previous = this.environment;
         try {
             this.environment = env;
             for (Stmt stmt : statements) execute(stmt);
         } finally {
             this.environment = previous;
+        }
+    }
+
+    private void hoistFunctions(List<Stmt> statements, Environment env) {
+        if (statements == null) return;
+        for (Stmt stmt : statements) {
+            if (stmt instanceof Stmt.FunctionDecl fnDecl) {
+                JSFunction fn = new JSFunction(fnDecl.name.getLexeme(), fnDecl.params, fnDecl.body, env);
+                env.define(fnDecl.name.getLexeme(), fn);
+            }
         }
     }
 
@@ -391,6 +404,37 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case BANG_EQUAL        -> !looseEquals(left, right);
             case EQUAL_EQUAL_EQUAL -> strictEquals(left, right);
             case BANG_EQUAL_EQUAL  -> !strictEquals(left, right);
+            case IN -> {
+                String prop = Stringify.toJSString(left);
+                if (right instanceof Map<?, ?> map) {
+                    yield map.containsKey(prop);
+                } else if (right instanceof List<?> list) {
+                    try {
+                        double index = toNumber(left);
+                        if (index == (int) index) {
+                            int idx = (int) index;
+                            yield idx >= 0 && idx < list.size();
+                        }
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                    yield false;
+                } else if (right instanceof String s) {
+                    if ("length".equals(prop)) yield true;
+                    try {
+                        double index = toNumber(left);
+                        if (index == (int) index) {
+                            int idx = (int) index;
+                            yield idx >= 0 && idx < s.length();
+                        }
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                    yield false;
+                } else {
+                    throw new RuntimeError("TypeError: Cannot use 'in' operator to search for '" + prop + "' in " + Stringify.stringify(right), expr.operator);
+                }
+            }
             default -> throw new RuntimeError("Unknown operator: " + expr.operator.getLexeme(), expr.operator);
         };
         explainEngine.explainBinary(expr, result, getLine(expr));
@@ -723,6 +767,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             }
             return new DateObject(date);
         }
+        if (constructor instanceof SetConstructor) {
+            return ((SetConstructor) constructor).call(this, args);
+        }
 
         throw new RuntimeError("TypeError: " + Stringify.stringify(constructor) + " is not a constructor",
                 expr.keyword);
@@ -826,6 +873,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (object instanceof DateConstructor dateConst) {
             return dateConst.getProperty(prop);
         }
+        if (object instanceof SetObject setObj) {
+            return setObj.getProperty(prop, expr.name.getLine());
+        }
 
         // ── String properties/methods ───────────────────────────────
         if (object instanceof String s) return getStringProperty(s, prop, expr.name);
@@ -836,17 +886,29 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         // ── Object properties ───────────────────────────────────────
         if (object instanceof LinkedHashMap<?, ?> map) {
             Object val = ((Map<String, Object>) map).get(prop);
-            if (val == null) {
-                java.util.List<String> keys = new java.util.ArrayList<>();
-                for (Object k : map.keySet()) {
-                    if (k instanceof String) keys.add((String) k);
-                }
-                String closest = SuggestionEngine.suggestProperty(prop, keys);
-                if (closest != null) {
-                    throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.name, closest);
-                }
+            if (val != null) return val;
+
+            // Prototype lookup
+            if ("hasOwnProperty".equals(prop)) {
+                return (JSCallable) (interpreter, args) -> {
+                    if (args.isEmpty()) return false;
+                    String checkProp = Stringify.toJSString(args.get(0));
+                    return map.containsKey(checkProp);
+                };
             }
-            return val != null ? val : JSUndefined.INSTANCE;
+            if ("toString".equals(prop)) {
+                return (JSCallable) (interpreter, args) -> "[object Object]";
+            }
+
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            for (Object k : map.keySet()) {
+                if (k instanceof String) keys.add((String) k);
+            }
+            String closest = SuggestionEngine.suggestProperty(prop, keys);
+            if (closest != null) {
+                throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.name, closest);
+            }
+            return JSUndefined.INSTANCE;
         }
 
         throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
@@ -867,6 +929,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             String prop = Stringify.toJSString(index);
             return dateConst.getProperty(prop);
         }
+        if (object instanceof SetObject setObj) {
+            String prop = Stringify.toJSString(index);
+            return setObj.getProperty(prop, expr.bracket.getLine());
+        }
 
         if (object instanceof ArrayList<?> arr) {
             int idx = (int) toNumber(index);
@@ -877,7 +943,20 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (object instanceof LinkedHashMap<?, ?> map) {
             String prop = Stringify.toJSString(index);
             Object val = ((Map<String, Object>) map).get(prop);
-            return val != null ? val : JSUndefined.INSTANCE;
+            if (val != null) return val;
+
+            // Prototype lookup
+            if ("hasOwnProperty".equals(prop)) {
+                return (JSCallable) (interpreter, args) -> {
+                    if (args.isEmpty()) return false;
+                    String checkProp = Stringify.toJSString(args.get(0));
+                    return map.containsKey(checkProp);
+                };
+            }
+            if ("toString".equals(prop)) {
+                return (JSCallable) (interpreter, args) -> "[object Object]";
+            }
+            return JSUndefined.INSTANCE;
         }
         if (object instanceof String s) {
             int idx = (int) toNumber(index);
@@ -908,9 +987,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     public Object visitObjectLiteralExpr(Expr.ObjectLiteral expr) {
         LinkedHashMap<String, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < expr.keys.size(); i++) {
-            String key = expr.keys.get(i);
+            Object keyObj = expr.keys.get(i);
             Object value = evaluate(expr.values.get(i));
-            if (key == null) {
+            if (keyObj == null) {
                 if (value instanceof LinkedHashMap<?, ?> spreadMap) {
                     for (Map.Entry<?, ?> entry : spreadMap.entrySet()) {
                         if (entry.getKey() instanceof String k) {
@@ -927,6 +1006,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     }
                 }
             } else {
+                String key;
+                if (keyObj instanceof Expr computedKeyExpr) {
+                    key = Stringify.toJSString(evaluate(computedKeyExpr));
+                } else {
+                    key = (String) keyObj;
+                }
                 map.put(key, value);
             }
         }
@@ -1014,21 +1099,80 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     private Object getObjectStaticMethod(String name) {
         return switch (name) {
             case "keys" -> (JSCallable) (i, a) -> {
-                if (a.get(0) instanceof LinkedHashMap<?, ?> map)
+                if (a.isEmpty()) throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                Object obj = a.get(0);
+                if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                    throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                }
+                if (obj instanceof LinkedHashMap<?, ?> map) {
                     return new ArrayList<>(((Map<String, Object>) map).keySet());
+                }
+                if (obj instanceof String s) {
+                    List<Object> keys = new ArrayList<>();
+                    for (int idx = 0; idx < s.length(); idx++) {
+                        keys.add(String.valueOf(idx));
+                    }
+                    return keys;
+                }
+                if (obj instanceof ArrayList<?> list) {
+                    List<Object> keys = new ArrayList<>();
+                    for (int idx = 0; idx < list.size(); idx++) {
+                        keys.add(String.valueOf(idx));
+                    }
+                    return keys;
+                }
                 return new ArrayList<>();
             };
             case "values" -> (JSCallable) (i, a) -> {
-                if (a.get(0) instanceof LinkedHashMap<?, ?> map)
+                if (a.isEmpty()) throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                Object obj = a.get(0);
+                if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                    throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                }
+                if (obj instanceof LinkedHashMap<?, ?> map) {
                     return new ArrayList<>(((Map<String, Object>) map).values());
+                }
+                if (obj instanceof String s) {
+                    List<Object> values = new ArrayList<>();
+                    for (int idx = 0; idx < s.length(); idx++) {
+                        values.add(String.valueOf(s.charAt(idx)));
+                    }
+                    return values;
+                }
+                if (obj instanceof ArrayList<?> list) {
+                    return new ArrayList<>(list);
+                }
                 return new ArrayList<>();
             };
             case "entries" -> (JSCallable) (i, a) -> {
-                if (a.get(0) instanceof LinkedHashMap<?, ?> map) {
+                if (a.isEmpty()) throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                Object obj = a.get(0);
+                if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                    throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                }
+                if (obj instanceof LinkedHashMap<?, ?> map) {
                     List<Object> entries = new ArrayList<>();
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
                         List<Object> pair = new ArrayList<>();
                         pair.add(entry.getKey()); pair.add(entry.getValue());
+                        entries.add(pair);
+                    }
+                    return entries;
+                }
+                if (obj instanceof String s) {
+                    List<Object> entries = new ArrayList<>();
+                    for (int idx = 0; idx < s.length(); idx++) {
+                        List<Object> pair = new ArrayList<>();
+                        pair.add(String.valueOf(idx)); pair.add(String.valueOf(s.charAt(idx)));
+                        entries.add(pair);
+                    }
+                    return entries;
+                }
+                if (obj instanceof ArrayList<?> list) {
+                    List<Object> entries = new ArrayList<>();
+                    for (int idx = 0; idx < list.size(); idx++) {
+                        List<Object> pair = new ArrayList<>();
+                        pair.add(String.valueOf(idx)); pair.add(list.get(idx));
                         entries.add(pair);
                     }
                     return entries;
@@ -1376,6 +1520,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (expr instanceof Expr.TemplateLiteral e) return e.token != null ? e.token.getLine() : 0;
         if (expr instanceof Expr.Grouping e) return getLine(e.expression);
         if (expr instanceof Expr.TypeofExpr e) return e.keyword != null ? e.keyword.getLine() : 0;
+        if (expr instanceof Expr.DestructuredAssign e) return getLine(e.pattern);
         return 0;
     }
 
@@ -1397,6 +1542,336 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (stmt instanceof Stmt.Switch e) return getLine(e.discriminant);
         if (stmt instanceof Stmt.Break e) return e.keyword != null ? e.keyword.getLine() : 0;
         if (stmt instanceof Stmt.Continue e) return e.keyword != null ? e.keyword.getLine() : 0;
+        if (stmt instanceof Stmt.DestructuredVarDeclaration e) return getLine(e.pattern);
+        if (stmt instanceof Stmt.ForIn e) {
+            if (e.initializer != null) return getLine(e.initializer);
+            return getLine(e.object);
+        }
         return 0;
+    }
+
+    @Override
+    public Void visitDestructuredVarDeclarationStmt(Stmt.DestructuredVarDeclaration stmt) {
+        Object value = JSUndefined.INSTANCE;
+        if (stmt.initializer != null) value = evaluate(stmt.initializer);
+        boolean isConst = stmt.keyword.getType() == TokenType.CONST;
+        destructure(stmt.pattern, value, isConst, true, this.environment);
+        return null;
+    }
+
+    @Override
+    public Object visitDestructuredAssignExpr(Expr.DestructuredAssign expr) {
+        Object value = evaluate(expr.value);
+        destructure(expr.pattern, value, false, false, this.environment);
+        return value;
+    }
+
+    @Override
+    public Object visitDeleteExpr(Expr.DeleteExpr expr) {
+        if (expr.operand instanceof Expr.MemberAccess member) {
+            Object obj = evaluate(member.object);
+            if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                throw new RuntimeError("TypeError: Cannot read properties of " + Stringify.stringify(obj), member.name);
+            }
+            if (obj instanceof Map<?, ?> map) {
+                map.remove(member.name.getLexeme());
+            }
+            return true;
+        } else if (expr.operand instanceof Expr.ComputedAccess computed) {
+            Object obj = evaluate(computed.object);
+            if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                throw new RuntimeError("TypeError: Cannot read properties of " + Stringify.stringify(obj), computed.bracket);
+            }
+            Object index = evaluate(computed.index);
+            if (obj instanceof ArrayList<?> list) {
+                double idxD = toNumber(index);
+                int idx = (int) idxD;
+                if (idx >= 0 && idx < list.size()) {
+                    ((List<Object>) list).set(idx, JSUndefined.INSTANCE);
+                }
+            } else if (obj instanceof Map<?, ?> map) {
+                map.remove(Stringify.toJSString(index));
+            }
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public Object visitDefaultValExpr(Expr.DefaultVal expr) {
+        Object val = evaluate(expr.target);
+        if (val == JSUndefined.INSTANCE) {
+            return evaluate(expr.defaultValue);
+        }
+        return val;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Void visitForInStmt(Stmt.ForIn stmt) {
+        explainEngine.explainFor(getLine(stmt));
+
+        Object objVal = evaluate(stmt.object);
+        if (objVal == null || objVal instanceof JSUndefined || objVal instanceof JSNull) {
+            return null;
+        }
+
+        // Collect keys
+        List<String> keys = new java.util.ArrayList<>();
+        if (objVal instanceof Map<?, ?> map) {
+            for (Object key : map.keySet()) {
+                keys.add(Stringify.toJSString(key));
+            }
+        } else if (objVal instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                keys.add(String.valueOf(i));
+            }
+        } else if (objVal instanceof String s) {
+            for (int i = 0; i < s.length(); i++) {
+                keys.add(String.valueOf(i));
+            }
+        }
+
+        Environment previous = this.environment;
+        try {
+            for (String key : keys) {
+                // Each iteration gets its own block scope
+                Environment iterationEnv = new Environment(previous);
+                this.environment = iterationEnv;
+
+                // Bind/assign the loop variable in iterationEnv
+                assignLoopVariable(stmt.initializer, key, iterationEnv);
+
+                try {
+                    execute(stmt.body);
+                } catch (BreakSignal e) {
+                    break;
+                } catch (ContinueSignal e) {
+                    // continue to next iteration
+                }
+            }
+        } finally {
+            this.environment = previous;
+        }
+        return null;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Void visitForOfStmt(Stmt.ForOf stmt) {
+        explainEngine.explainFor(getLine(stmt));
+
+        Object iterVal = evaluate(stmt.iterable);
+        List<Object> elements = new ArrayList<>();
+
+        if (iterVal instanceof List<?> list) {
+            elements.addAll(list);
+        } else if (iterVal instanceof String s) {
+            for (int i = 0; i < s.length(); i++) {
+                elements.add(String.valueOf(s.charAt(i)));
+            }
+        } else if (iterVal instanceof SetObject setObj) {
+            elements.addAll(setObj.getElements());
+        } else if (iterVal == null || iterVal instanceof JSUndefined || iterVal instanceof JSNull) {
+            throw new RuntimeError("TypeError: " + Stringify.stringify(iterVal) + " is not iterable", getLine(stmt));
+        } else {
+            throw new RuntimeError("TypeError: " + Stringify.stringify(iterVal) + " is not iterable", getLine(stmt));
+        }
+
+        Environment previous = this.environment;
+        try {
+            for (Object element : elements) {
+                // Each iteration gets its own block scope
+                Environment iterationEnv = new Environment(previous);
+                this.environment = iterationEnv;
+
+                // Bind/assign the loop variable in iterationEnv
+                assignLoopVariable(stmt.initializer, element, iterationEnv);
+
+                try {
+                    execute(stmt.body);
+                } catch (BreakSignal e) {
+                    break;
+                } catch (ContinueSignal e) {
+                    // continue to next iteration
+                }
+            }
+        } finally {
+            this.environment = previous;
+        }
+        return null;
+    }
+
+    private void assignLoopVariable(Stmt initializer, Object value, Environment env) {
+        if (initializer instanceof Stmt.VarDeclaration varDecl) {
+            boolean isConst = varDecl.keyword.getType() == TokenType.CONST;
+            env.define(varDecl.name.getLexeme(), value, isConst);
+        } else if (initializer instanceof Stmt.DestructuredVarDeclaration destDecl) {
+            boolean isConst = destDecl.keyword.getType() == TokenType.CONST;
+            destructure(destDecl.pattern, value, isConst, true, env);
+        } else if (initializer instanceof Stmt.ExpressionStmt exprStmt) {
+            Expr expr = exprStmt.expression;
+            if (expr instanceof Expr.Identifier id) {
+                // Assign to the existing variable in scope
+                environment.assign(id.name.getLexeme(), value, id.name);
+            } else if (expr instanceof Expr.ObjectLiteral || expr instanceof Expr.ArrayLiteral) {
+                destructure(expr, value, false, false, env);
+            } else {
+                throw new RuntimeError("TypeError: Invalid loop variable", getLine(expr));
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void destructure(Expr pattern, Object value, boolean isConst, boolean isDefine, Environment env) {
+        if (pattern instanceof Expr.ObjectLiteral objLit) {
+            if (value == null || value instanceof JSUndefined || value instanceof JSNull) {
+                throw new RuntimeError("TypeError: Cannot destructure property of null or undefined", getLine(pattern));
+            }
+            
+            Map<String, Object> map = null;
+            if (value instanceof Map<?, ?>) {
+                map = (Map<String, Object>) value;
+            }
+
+            java.util.Set<String> keysUsed = new java.util.HashSet<>();
+            for (int i = 0; i < objLit.keys.size(); i++) {
+                Object keyObj = objLit.keys.get(i);
+                Expr valExpr = objLit.values.get(i);
+
+                if (keyObj != null) {
+                    String key;
+                    if (keyObj instanceof Expr computedKeyExpr) {
+                        key = Stringify.toJSString(evaluate(computedKeyExpr));
+                    } else {
+                        key = (String) keyObj;
+                    }
+                    keysUsed.add(key);
+
+                    Object val = JSUndefined.INSTANCE;
+                    if (map != null) {
+                        val = map.getOrDefault(key, JSUndefined.INSTANCE);
+                    } else {
+                        val = getObjectProperty(value, key, getLine(pattern));
+                    }
+
+                    destructureTarget(valExpr, val, isConst, isDefine, env);
+                } else {
+                    if (valExpr instanceof Expr.Spread spread) {
+                        LinkedHashMap<String, Object> restMap = new LinkedHashMap<>();
+                        if (value instanceof Map<?, ?> valMap) {
+                            for (Map.Entry<?, ?> entry : valMap.entrySet()) {
+                                String k = Stringify.toJSString(entry.getKey());
+                                if (!keysUsed.contains(k)) {
+                                    restMap.put(k, entry.getValue());
+                                }
+                            }
+                        }
+                        destructureTarget(spread.expression, restMap, isConst, isDefine, env);
+                    }
+                }
+            }
+        } else if (pattern instanceof Expr.ArrayLiteral arrLit) {
+            List<Object> list = null;
+            if (value instanceof List<?>) {
+                list = (List<Object>) value;
+            } else if (value instanceof String s) {
+                list = new ArrayList<>();
+                for (int i = 0; i < s.length(); i++) {
+                    list.add(String.valueOf(s.charAt(i)));
+                }
+            } else if (value == null || value instanceof JSUndefined || value instanceof JSNull) {
+                throw new RuntimeError("TypeError: " + Stringify.stringify(value) + " is not iterable", getLine(pattern));
+            }
+
+            for (int i = 0; i < arrLit.elements.size(); i++) {
+                Expr element = arrLit.elements.get(i);
+                if (element == null) continue;
+
+                if (element instanceof Expr.Spread spread) {
+                    List<Object> restList = new ArrayList<>();
+                    if (list != null && i < list.size()) {
+                        restList.addAll(list.subList(i, list.size()));
+                    }
+                    destructureTarget(spread.expression, restList, isConst, isDefine, env);
+                    break;
+                }
+
+                Object val = JSUndefined.INSTANCE;
+                if (list != null && i < list.size()) {
+                    val = list.get(i);
+                }
+
+                destructureTarget(element, val, isConst, isDefine, env);
+            }
+        } else {
+            throw new RuntimeError("TypeError: Invalid destructuring pattern", getLine(pattern));
+        }
+    }
+
+    private void destructureTarget(Expr target, Object value, boolean isConst, boolean isDefine, Environment env) {
+        if (target instanceof Expr.DefaultVal defaultVal) {
+            if (value == JSUndefined.INSTANCE) {
+                value = evaluate(defaultVal.defaultValue);
+            }
+            target = defaultVal.target;
+        }
+
+        if (target instanceof Expr.Identifier id) {
+            String name = id.name.getLexeme();
+            if (isDefine) {
+                env.define(name, value, isConst);
+                explainEngine.explainVarDecl(id.name, value, getLine(id));
+            } else {
+                env.assign(name, value, id.name);
+                explainEngine.explainAssign(id.name, value, getLine(id));
+            }
+        } else if (target instanceof Expr.ObjectLiteral || target instanceof Expr.ArrayLiteral) {
+            destructure(target, value, isConst, isDefine, env);
+        } else {
+            throw new RuntimeError("TypeError: Invalid destructuring target", getLine(target));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object getObjectProperty(Object object, String prop, int line) {
+        if (object instanceof DateObject dateObj) {
+            return dateObj.getProperty(prop, line);
+        }
+        if (object instanceof DateConstructor dateConst) {
+            return dateConst.getProperty(prop);
+        }
+        if (object instanceof SetObject setObj) {
+            return setObj.getProperty(prop, line);
+        }
+        if (object instanceof String s) {
+            if ("length".equals(prop)) return (double) s.length();
+            try {
+                int idx = Integer.parseInt(prop);
+                if (idx >= 0 && idx < s.length()) {
+                    return String.valueOf(s.charAt(idx));
+                }
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+            return JSUndefined.INSTANCE;
+        }
+        if (object instanceof ArrayList<?> arr) {
+            if ("length".equals(prop)) return (double) arr.size();
+            try {
+                int idx = Integer.parseInt(prop);
+                if (idx >= 0 && idx < arr.size()) {
+                    return arr.get(idx);
+                }
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+            return JSUndefined.INSTANCE;
+        }
+        if (object instanceof LinkedHashMap<?, ?> map) {
+            Object val = ((Map<String, Object>) map).get(prop);
+            return val != null ? val : JSUndefined.INSTANCE;
+        }
+        return JSUndefined.INSTANCE;
     }
 }

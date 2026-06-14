@@ -45,6 +45,8 @@ public class Lexer {
         KEYWORDS.put("undefined", TokenType.UNDEFINED);
         KEYWORDS.put("typeof",    TokenType.TYPEOF);
         KEYWORDS.put("new",       TokenType.NEW);
+        KEYWORDS.put("in",        TokenType.IN);
+        KEYWORDS.put("delete",    TokenType.DELETE);
     }
 
     // ── Instance state ──────────────────────────────────────────────────

@@ -91,6 +91,35 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
     }
 
     @Override
+    public TreeNode visitDestructuredVarDeclarationStmt(Stmt.DestructuredVarDeclaration stmt) {
+        String label = stmt.keyword.getLexeme() + " " + SourceCodeReconstructor.toSource(stmt.pattern) +
+            (stmt.initializer != null ? " = " + SourceCodeReconstructor.toSource(stmt.initializer) : "");
+        TreeNode node = new TreeNode(label);
+        if (stmt.initializer != null) {
+            node.children.add(stmt.initializer.accept(this));
+        }
+        return node;
+    }
+
+    @Override
+    public TreeNode visitForInStmt(Stmt.ForIn stmt) {
+        TreeNode node = new TreeNode("ForIn");
+        node.children.add(stmt.initializer.accept(this));
+        node.children.add(stmt.object.accept(this));
+        node.children.add(stmt.body.accept(this));
+        return node;
+    }
+
+    @Override
+    public TreeNode visitForOfStmt(Stmt.ForOf stmt) {
+        TreeNode node = new TreeNode("ForOf");
+        node.children.add(stmt.initializer.accept(this));
+        node.children.add(stmt.iterable.accept(this));
+        node.children.add(stmt.body.accept(this));
+        return node;
+    }
+
+    @Override
     public TreeNode visitBlockStmt(Stmt.Block stmt) {
         TreeNode node = new TreeNode("Block");
         for (Stmt s : stmt.statements) {
@@ -262,6 +291,21 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
     }
 
     @Override
+    public TreeNode visitDestructuredAssignExpr(Expr.DestructuredAssign expr) {
+        return new TreeNode(SourceCodeReconstructor.toSource(expr));
+    }
+
+    @Override
+    public TreeNode visitDeleteExpr(Expr.DeleteExpr expr) {
+        return new TreeNode(SourceCodeReconstructor.toSource(expr));
+    }
+
+    @Override
+    public TreeNode visitDefaultValExpr(Expr.DefaultVal expr) {
+        return new TreeNode(SourceCodeReconstructor.toSource(expr));
+    }
+
+    @Override
     public TreeNode visitMemberAssignExpr(Expr.MemberAssign expr) {
         return new TreeNode(SourceCodeReconstructor.toSource(expr));
     }
@@ -399,6 +443,22 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
         }
 
         @Override
+        public String visitDestructuredVarDeclarationStmt(Stmt.DestructuredVarDeclaration stmt) {
+            return stmt.keyword.getLexeme() + " " + toSource(stmt.pattern) +
+                (stmt.initializer != null ? " = " + toSource(stmt.initializer) : "");
+        }
+
+        @Override
+        public String visitForInStmt(Stmt.ForIn stmt) {
+            return "for (" + toSource(stmt.initializer) + " in " + toSource(stmt.object) + ") " + toSource(stmt.body);
+        }
+
+        @Override
+        public String visitForOfStmt(Stmt.ForOf stmt) {
+            return "for (" + toSource(stmt.initializer) + " of " + toSource(stmt.iterable) + ") " + toSource(stmt.body);
+        }
+
+        @Override
         public String visitBlockStmt(Stmt.Block stmt) {
             StringBuilder sb = new StringBuilder();
             sb.append("{ ");
@@ -509,6 +569,21 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
         }
 
         @Override
+        public String visitDestructuredAssignExpr(Expr.DestructuredAssign expr) {
+            return toSource(expr.pattern) + " = " + toSource(expr.value);
+        }
+
+        @Override
+        public String visitDeleteExpr(Expr.DeleteExpr expr) {
+            return "delete " + toSource(expr.operand);
+        }
+
+        @Override
+        public String visitDefaultValExpr(Expr.DefaultVal expr) {
+            return toSource(expr.target) + " = " + toSource(expr.defaultValue);
+        }
+
+        @Override
         public String visitMemberAssignExpr(Expr.MemberAssign expr) {
             return toSource(expr.object) + "." + expr.name.getLexeme() + " = " + toSource(expr.value);
         }
@@ -571,9 +646,11 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
             StringBuilder sb = new StringBuilder();
             sb.append("{ ");
             for (int i = 0; i < expr.keys.size(); i++) {
-                String key = expr.keys.get(i);
+                Object key = expr.keys.get(i);
                 if (key == null) {
                     sb.append("...").append(toSource(expr.values.get(i)));
+                } else if (key instanceof Expr computed) {
+                    sb.append("[").append(toSource(computed)).append("]: ").append(toSource(expr.values.get(i)));
                 } else {
                     sb.append(key).append(": ").append(toSource(expr.values.get(i)));
                 }

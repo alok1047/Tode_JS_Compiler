@@ -5,6 +5,7 @@ This report details the execution results of the stress suite designed to valida
 | Status | Test File | Expected | Actual | Details |
 | --- | --- | --- | --- | --- |
 | PASS ✅ | `tests/basic/armstrong.js` | `true<br>false` | `true<br>false` | |
+| PASS ✅ | `tests/basic/es6_features.js` | `--- ITERATION ---<br>for...of array: 1 2 3<br>for...in object: a:1 b:2<br>for...of keys: a b<br>for...of values: 1 2<br>for...of entries: a:1 b:2<br>destructuring in loop: key=a val=1 key=b val=2<br><br>--- OBJECT FEATURES ---<br>shorthand: Alok, greet: hi<br>dynamic access: Civic<br>computed: hello: world<br>delete: undefined<br>hasOwnProperty name: true<br>hasOwnProperty age: false<br><br>--- ARRAY FEATURES ---<br>sparse array length: 101, val: 5<br>array hole length: 3, val: undefined<br>auto expansion length: 51, val: 10<br>lastIndexOf: 3<br>join: 1-2-3<br>flat: 1,2,3,4,5<br>spread copy: 1 2 3<br><br>--- DESTRUCTURING ---<br>array destructuring: 1 2<br>skipped: 1 3<br>rest elements: 1 [2,3]<br>object destructuring: Alok<br>renamed: Alok<br>default values: User Guest<br>nested: true<br>object rest: Alok {age:30,role:"User"}<br><br>--- FUNCTION FEATURES ---<br>hoisting: true<br>expression: 3<br>default params: Guest<br>rest params: 10<br>callbacks: 30<br><br>--- ARROW FUNCTIONS ---<br>implicit return: 16<br>returning object: Alok<br><br>--- DATE FEATURES ---<br>now: true<br>getters: true<br>setters: 2028-11-20<br>formatting: true<br><br>--- SEMANTICS ---<br>object ref: true<br>array ref: true<br>shallow copy: true<br>proper undefined handling: true<br>property lookup: true<br>prototype safe Object.keys: true` | `--- ITERATION ---<br>for...of array: 1 2 3<br>for...in object: a:1 b:2<br>for...of keys: a b<br>for...of values: 1 2<br>for...of entries: a:1 b:2<br>destructuring in loop: key=a val=1 key=b val=2<br><br>--- OBJECT FEATURES ---<br>shorthand: Alok, greet: hi<br>dynamic access: Civic<br>computed: hello: world<br>delete: undefined<br>hasOwnProperty name: true<br>hasOwnProperty age: false<br><br>--- ARRAY FEATURES ---<br>sparse array length: 101, val: 5<br>array hole length: 3, val: undefined<br>auto expansion length: 51, val: 10<br>lastIndexOf: 3<br>join: 1-2-3<br>flat: 1,2,3,4,5<br>spread copy: 1 2 3<br><br>--- DESTRUCTURING ---<br>array destructuring: 1 2<br>skipped: 1 3<br>rest elements: 1 [2,3]<br>object destructuring: Alok<br>renamed: Alok<br>default values: User Guest<br>nested: true<br>object rest: Alok {age:30,role:"User"}<br><br>--- FUNCTION FEATURES ---<br>hoisting: true<br>expression: 3<br>default params: Guest<br>rest params: 10<br>callbacks: 30<br><br>--- ARROW FUNCTIONS ---<br>implicit return: 16<br>returning object: Alok<br><br>--- DATE FEATURES ---<br>now: true<br>getters: true<br>setters: 2028-11-20<br>formatting: true<br><br>--- SEMANTICS ---<br>object ref: true<br>array ref: true<br>shallow copy: true<br>proper undefined handling: true<br>property lookup: true<br>prototype safe Object.keys: true` | |
 | PASS ✅ | `tests/basic/odd_even.js` | `7 is Odd` | `7 is Odd` | |
 | PASS ✅ | `tests/basic/palindrome.js` | `racecar is a Palindrome` | `racecar is a Palindrome` | |
 | PASS ✅ | `tests/basic/pattern.js` | `*<br>**<br>***<br>****<br>*****` | `*<br>**<br>***<br>****<br>*****` | |
@@ -66,7 +67,7 @@ This report details the execution results of the stress suite designed to valida
 | PASS ✅ | `tests/datatypes/variables/scoping.js` | `2<br>1` | `2<br>1` | |
 
 ## Final Summary
-* **Total Tests:** 60
-* **Passed:** 60
+* **Total Tests:** 61
+* **Passed:** 61
 * **Failed:** 0
 * **Success Rate:** 100.00%

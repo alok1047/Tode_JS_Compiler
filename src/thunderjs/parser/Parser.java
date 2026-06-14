@@ -78,17 +78,48 @@ public class Parser {
      * varDeclaration → ("let" | "const" | "var") IDENTIFIER ("=" expression)? ";"
      */
     private Stmt varDeclaration() {
+        return varDeclaration(true);
+    }
+
+    private Stmt varDeclaration(boolean requireSemicolon) {
         Token keyword = advance(); // let, const, or var
 
-        Token name = consume(TokenType.IDENTIFIER, "Expected variable name after '" + keyword.getLexeme() + "'");
+        if (check(TokenType.LEFT_BRACE) || check(TokenType.LEFT_BRACKET)) {
+            // Destructuring pattern
+            Expr pattern;
+            if (match(TokenType.LEFT_BRACE)) {
+                pattern = parseObjectLiteral();
+            } else {
+                advance(); // consume LEFT_BRACKET
+                pattern = parseArrayLiteral();
+            }
 
-        Expr initializer = null;
-        if (match(TokenType.EQUAL)) {
-            initializer = expression();
+            Expr initializer = null;
+            if (match(TokenType.EQUAL)) {
+                initializer = expression();
+            } else {
+                if (!check(TokenType.IN) && !checkContextualOf()) {
+                    throw error(peek(), "Destructuring declarations must have an initializer");
+                }
+            }
+
+            if (requireSemicolon) {
+                consumeSemicolon();
+            }
+            return new Stmt.DestructuredVarDeclaration(keyword, pattern, initializer);
+        } else {
+            Token name = consume(TokenType.IDENTIFIER, "Expected variable name after '" + keyword.getLexeme() + "'");
+
+            Expr initializer = null;
+            if (match(TokenType.EQUAL)) {
+                initializer = expression();
+            }
+
+            if (requireSemicolon) {
+                consumeSemicolon();
+            }
+            return new Stmt.VarDeclaration(keyword, name, initializer);
         }
-
-        consumeSemicolon();
-        return new Stmt.VarDeclaration(keyword, name, initializer);
     }
 
     /**
@@ -182,15 +213,51 @@ public class Parser {
     private Stmt forStatement() {
         consume(TokenType.LEFT_PAREN, "Expected '(' after 'for'");
 
-        // Initializer
-        Stmt initializer;
+        Stmt initializer = null;
+        boolean isForIn = false;
+        Expr forInExpr = null;
+        boolean isForOf = false;
+        Expr forOfExpr = null;
+
         if (match(TokenType.SEMICOLON)) {
             initializer = null;
         } else if (check(TokenType.LET) || check(TokenType.CONST) || check(TokenType.VAR)) {
-            initializer = varDeclaration();
+            initializer = varDeclaration(false); // don't consume semicolon yet!
+            if (match(TokenType.IN)) {
+                isForIn = true;
+                forInExpr = expression();
+            } else if (matchContextualOf()) {
+                isForOf = true;
+                forOfExpr = expression();
+            }
         } else {
-            initializer = expressionStatement();
+            Expr expr = expression();
+            if (match(TokenType.IN)) {
+                isForIn = true;
+                forInExpr = expression();
+                initializer = new Stmt.ExpressionStmt(expr);
+            } else if (matchContextualOf()) {
+                isForOf = true;
+                forOfExpr = expression();
+                initializer = new Stmt.ExpressionStmt(expr);
+            } else {
+                initializer = new Stmt.ExpressionStmt(expr);
+            }
         }
+
+        if (isForIn) {
+            consume(TokenType.RIGHT_PAREN, "Expected ')' after for clauses");
+            Stmt body = statement();
+            return new Stmt.ForIn(initializer, forInExpr, body);
+        }
+
+        if (isForOf) {
+            consume(TokenType.RIGHT_PAREN, "Expected ')' after for clauses");
+            Stmt body = statement();
+            return new Stmt.ForOf(initializer, forOfExpr, body);
+        }
+
+        consume(TokenType.SEMICOLON, "Expected ';' after for-loop initializer");
 
         // Condition
         Expr condition = null;
@@ -331,6 +398,8 @@ public class Parser {
                 return new Expr.MemberAssign(mem.object, mem.name, value);
             } else if (expr instanceof Expr.ComputedAccess comp) {
                 return new Expr.ComputedAssign(comp.object, comp.index, value, comp.bracket);
+            } else if (expr instanceof Expr.ObjectLiteral || expr instanceof Expr.ArrayLiteral) {
+                return new Expr.DestructuredAssign(expr, value);
             }
             throw error(equals, "Invalid assignment target");
         }
@@ -419,7 +488,8 @@ public class Parser {
         Expr expr = addition();
 
         while (match(TokenType.LESS, TokenType.GREATER,
-                     TokenType.LESS_EQUAL, TokenType.GREATER_EQUAL)) {
+                     TokenType.LESS_EQUAL, TokenType.GREATER_EQUAL,
+                     TokenType.IN)) {
             Token op = previous();
             Expr right = addition();
             expr = new Expr.Binary(expr, op, right);
@@ -483,6 +553,12 @@ public class Parser {
             Token op = previous();
             Expr operand = unary();
             return new Expr.Unary(op, operand);
+        }
+
+        if (match(TokenType.DELETE)) {
+            Token op = previous();
+            Expr operand = unary();
+            return new Expr.DeleteExpr(operand, op);
         }
 
         if (match(TokenType.TYPEOF)) {
@@ -785,19 +861,34 @@ public class Parser {
         Token bracket = previous();
         List<Expr> elements = new ArrayList<>();
 
-        if (!check(TokenType.RIGHT_BRACKET)) {
-            do {
-                if (check(TokenType.RIGHT_BRACKET)) break; // trailing comma
+        if (match(TokenType.RIGHT_BRACKET)) {
+            return new Expr.ArrayLiteral(elements, bracket);
+        }
+
+        while (true) {
+            if (check(TokenType.COMMA)) {
+                elements.add(null);
+                advance(); // consume ','
+            } else if (match(TokenType.RIGHT_BRACKET)) {
+                break;
+            } else {
                 if (match(TokenType.DOT_DOT_DOT)) {
                     Expr spread = assignment();
                     elements.add(new Expr.Spread(spread));
                 } else {
                     elements.add(assignment());
                 }
-            } while (match(TokenType.COMMA));
-        }
 
-        consume(TokenType.RIGHT_BRACKET, "Expected ']' after array elements");
+                if (check(TokenType.COMMA)) {
+                    advance(); // consume ','
+                } else if (check(TokenType.RIGHT_BRACKET)) {
+                    advance(); // consume ']'
+                    break;
+                } else {
+                    throw error(peek(), "Expected ',' or ']' after array element");
+                }
+            }
+        }
         return new Expr.ArrayLiteral(elements, bracket);
     }
 
@@ -805,7 +896,7 @@ public class Parser {
 
     private Expr parseObjectLiteral() {
         Token brace = previous();
-        List<String> keys = new ArrayList<>();
+        List<Object> keys = new ArrayList<>();
         List<Expr> values = new ArrayList<>();
 
         if (!check(TokenType.RIGHT_BRACE)) {
@@ -817,10 +908,39 @@ public class Parser {
                     keys.add(null);
                     values.add(new Expr.Spread(spread));
                 } else {
-                    // Key can be identifier or string
-                    String key;
-                    if (match(TokenType.IDENTIFIER)) {
-                        key = previous().getLexeme();
+                    Object key;
+                    if (match(TokenType.LEFT_BRACKET)) {
+                        key = expression();
+                        consume(TokenType.RIGHT_BRACKET, "Expected ']' after computed property name");
+                    } else if (match(TokenType.IDENTIFIER)) {
+                        Token idToken = previous();
+                        String keyStr = idToken.getLexeme();
+                        // Shorthand default value: { name = defaultValue }
+                        if (match(TokenType.EQUAL)) {
+                            Expr defaultValue = assignment();
+                            keys.add(keyStr);
+                            values.add(new Expr.DefaultVal(new Expr.Identifier(idToken), defaultValue));
+                            continue;
+                        }
+                        // Method shorthand: greet() { ... }
+                        if (check(TokenType.LEFT_PAREN)) {
+                            advance(); // consume '('
+                            List<Expr.Parameter> params = parseParameterList();
+                            consume(TokenType.RIGHT_PAREN, "Expected ')' after parameters");
+                            consume(TokenType.LEFT_BRACE, "Expected '{' before method body");
+                            List<Stmt> body = blockBody();
+                            Expr method = new Expr.FunctionExpr(null, params, body);
+                            keys.add(keyStr);
+                            values.add(method);
+                            continue;
+                        }
+                        // Shorthand property syntax (e.g. { name })
+                        if (!check(TokenType.COLON)) {
+                            keys.add(keyStr);
+                            values.add(new Expr.Identifier(idToken));
+                            continue;
+                        }
+                        key = keyStr;
                     } else if (match(TokenType.STRING)) {
                         key = (String) previous().getLiteral();
                     } else if (match(TokenType.NUMBER)) {
@@ -941,6 +1061,19 @@ public class Parser {
     // ════════════════════════════════════════════════════════════════════
     //  TOKEN NAVIGATION HELPERS
     // ════════════════════════════════════════════════════════════════════
+
+    private boolean checkContextualOf() {
+        if (isAtEnd()) return false;
+        return peek().getType() == TokenType.IDENTIFIER && "of".equals(peek().getLexeme());
+    }
+
+    private boolean matchContextualOf() {
+        if (check(TokenType.IDENTIFIER) && "of".equals(peek().getLexeme())) {
+            advance();
+            return true;
+        }
+        return false;
+    }
 
     private boolean match(TokenType... types) {
         for (TokenType type : types) {

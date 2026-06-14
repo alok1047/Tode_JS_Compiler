@@ -69,6 +69,11 @@ public class DateObject {
 
             // String conversions
             case "toString" -> (JSCallable) (interpreter, args) -> date.toString();
+            case "toLocaleString" -> (JSCallable) (interpreter, args) -> {
+                if (!date.isValid()) return "Invalid Date";
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("M/d/yyyy, h:mm:ss a");
+                return sdf.format(new java.util.Date((long) date.getTime()));
+            };
             case "toISOString" -> (JSCallable) (interpreter, args) -> {
                 try {
                     return date.toISOString();

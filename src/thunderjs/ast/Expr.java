@@ -43,6 +43,9 @@ public abstract class Expr {
         R visitGroupingExpr(Grouping expr);
         R visitTypeofExpr(TypeofExpr expr);
         R visitNewExpr(New expr);
+        R visitDestructuredAssignExpr(DestructuredAssign expr);
+        R visitDeleteExpr(DeleteExpr expr);
+        R visitDefaultValExpr(DefaultVal expr);
     }
 
     public abstract <R> R accept(Visitor<R> visitor);
@@ -324,11 +327,11 @@ public abstract class Expr {
      * Object literal: { key: value, key2: value2 }.
      */
     public static class ObjectLiteral extends Expr {
-        public final List<String> keys;
+        public final List<Object> keys; // String or Expr (computed key)
         public final List<Expr> values;
         public final Token brace;
 
-        public ObjectLiteral(List<String> keys, List<Expr> values, Token brace) {
+        public ObjectLiteral(List<Object> keys, List<Expr> values, Token brace) {
             this.keys = keys;
             this.values = values;
             this.brace = brace;
@@ -488,6 +491,60 @@ public abstract class Expr {
         @Override
         public <R> R accept(Visitor<R> visitor) {
             return visitor.visitNewExpr(this);
+        }
+    }
+
+    /**
+     * Destructuring assignment: [x, y] = arr  or  {a, b} = obj
+     */
+    public static class DestructuredAssign extends Expr {
+        public final Expr pattern; // ArrayLiteral or ObjectLiteral
+        public final Expr value;
+
+        public DestructuredAssign(Expr pattern, Expr value) {
+            this.pattern = pattern;
+            this.value = value;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitDestructuredAssignExpr(this);
+        }
+    }
+
+    /**
+     * Delete expression: delete obj.prop
+     */
+    public static class DeleteExpr extends Expr {
+        public final Expr operand;
+        public final Token keyword;
+
+        public DeleteExpr(Expr operand, Token keyword) {
+            this.operand = operand;
+            this.keyword = keyword;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitDeleteExpr(this);
+        }
+    }
+
+    /**
+     * Default value expression inside patterns: target = defaultValue
+     */
+    public static class DefaultVal extends Expr {
+        public final Expr target;
+        public final Expr defaultValue;
+
+        public DefaultVal(Expr target, Expr defaultValue) {
+            this.target = target;
+            this.defaultValue = defaultValue;
+        }
+
+        @Override
+        public <R> R accept(Visitor<R> visitor) {
+            return visitor.visitDefaultValExpr(this);
         }
     }
 
