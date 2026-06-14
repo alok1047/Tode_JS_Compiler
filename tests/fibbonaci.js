@@ -3,6 +3,6 @@ function fib(n) {
     return fib(n - 1) + fib(n - 2);
 }
 
-const result = fib(40);
+const result = fib(3);
 
 console.log(result);

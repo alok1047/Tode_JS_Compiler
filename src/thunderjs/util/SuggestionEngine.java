@@ -8,7 +8,7 @@ public class SuggestionEngine {
     
     private static final List<String> BUILTINS = List.of(
         "console", "Math", "Object", "Date", "Array", "String", "Number", "Boolean",
-        "parseInt", "parseFloat", "isNaN", "NaN", "Infinity", "undefined"
+        "parseInt", "parseFloat", "isNaN", "isFinite", "NaN", "Infinity", "undefined"
     );
 
     public static String suggestVariable(String name, Environment env) {

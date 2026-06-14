@@ -1,0 +1,13 @@
+/*
+Expected:
+123
+true
+false
+123
+true
+*/
+console.log(Number("123"));
+console.log(Boolean(1));
+console.log(Boolean(0));
+console.log(String(123));
+console.log(Boolean("hello"));

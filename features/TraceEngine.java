@@ -52,7 +52,7 @@ public class TraceEngine {
         stepCount++;
         System.out.println();
         System.out.printf("▶ Step %d\n", stepCount);
-        System.out.println("  Execute:");
+        System.out.println("  Executing statement:");
         String source = ASTPrinter.SourceCodeReconstructor.toSource(stmt);
         for (String line : source.split("\n")) {
             System.out.println("    " + line);
@@ -64,17 +64,28 @@ public class TraceEngine {
     public void afterExecute(Stmt stmt, Environment env) {
         if (!enabled) return;
         if (lastConsoleOutput != null) {
-            System.out.println("  Output:");
+            System.out.println();
+            System.out.println("  Console Output:");
             for (String line : lastConsoleOutput.split("\n")) {
                 System.out.println("    " + line);
             }
             lastConsoleOutput = null;
         } else if (lastValue != null && (stmt instanceof Stmt.VarDeclaration || stmt instanceof Stmt.ExpressionStmt)) {
-            System.out.println("  Result:");
+            System.out.println();
+            System.out.println("  Result of statement:");
             System.out.println("    " + Stringify.stringify(lastValue));
         }
-        System.out.println("  Variables:");
-        System.out.println(formatEnvironment(collectVariables(env)));
+        
+        System.out.println();
+        System.out.println("  Active Variables:");
+        Map<String, Object> vars = collectVariables(env);
+        if (vars.isEmpty()) {
+            System.out.println("    (No active variables in scope)");
+        } else {
+            for (Map.Entry<String, Object> entry : vars.entrySet()) {
+                System.out.println("    • " + entry.getKey() + " = " + Stringify.stringify(entry.getValue()));
+            }
+        }
     }
 
     private Map<String, Object> collectVariables(Environment env) {
@@ -100,63 +111,30 @@ public class TraceEngine {
         return allVars;
     }
 
-    private String formatEnvironment(Map<String, Object> vars) {
-        if (vars.isEmpty()) {
-            return "  {}";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("  {\n");
-        int count = 0;
-        for (Map.Entry<String, Object> entry : vars.entrySet()) {
-            sb.append("    ").append(entry.getKey()).append(": ").append(Stringify.stringify(entry.getValue()));
-            if (++count < vars.size()) {
-                sb.append(",");
-            }
-            sb.append("\n");
-        }
-        sb.append("  }");
-        return sb.toString();
-    }
-
     public void beforeCall(String name, List<Object> args, List<String> paramNames) {
         if (!enabled) return;
         System.out.println();
-        System.out.printf("▶ Call %s(%s)\n", name != null ? name : "anonymous", formatArgumentsInline(args));
-        System.out.println("  Arguments:");
-        System.out.println(formatArgumentsBlock(paramNames, args));
+        System.out.println("▶ Function Call:");
+        System.out.printf("  Calling '%s' with arguments:\n", name != null ? name : "anonymous");
+        if (args.isEmpty()) {
+            System.out.println("    (No arguments passed)");
+        } else {
+            for (int i = 0; i < args.size(); i++) {
+                String paramName = (paramNames != null && i < paramNames.size()) ? paramNames.get(i) : "arg" + i;
+                System.out.println("    • " + paramName + " = " + Stringify.stringify(args.get(i)));
+            }
+        }
     }
 
     public void afterCall(String name, Object result) {
         if (!enabled) return;
-        System.out.printf("◀ Return %s() → %s\n", name != null ? name : "anonymous", Stringify.stringify(result));
+        System.out.println();
+        System.out.println("◀ Function Return:");
+        System.out.printf("  Returned from '%s' with value:\n", name != null ? name : "anonymous");
+        System.out.println("    " + Stringify.stringify(result));
     }
 
-    private String formatArgumentsInline(List<Object> args) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < args.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(Stringify.stringify(args.get(i)));
-        }
-        return sb.toString();
-    }
 
-    private String formatArgumentsBlock(List<String> paramNames, List<Object> args) {
-        if (args.isEmpty()) {
-            return "  {}";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("  {\n");
-        for (int i = 0; i < args.size(); i++) {
-            String paramName = (paramNames != null && i < paramNames.size()) ? paramNames.get(i) : "arg" + i;
-            sb.append("    ").append(paramName).append(": ").append(Stringify.stringify(args.get(i)));
-            if (i < args.size() - 1) {
-                sb.append(",");
-            }
-            sb.append("\n");
-        }
-        sb.append("  }");
-        return sb.toString();
-    }
 
     // ── Call Stack Tracing (Backward Compatibility & Errors) ─────────────────
 

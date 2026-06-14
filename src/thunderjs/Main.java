@@ -40,6 +40,9 @@ public class Main {
             String arg = args[i];
             if (arg.equals("--ast")) {
                 options.showAst = true;
+            } else if (arg.equals("--no-color")) {
+                options.noColor = true;
+                thunderjs.util.Ansi.enabled = false;
             } else if (arg.equals("--bench") || arg.equals("--time")) {
                 options.benchmark = true;
             } else if (arg.equals("--trace")) {
@@ -280,6 +283,7 @@ public class Main {
               --format           Pretty-print / auto-format the source code
               --minify           Output minified (compressed) source code
               --repl             Start the interactive REPL
+              --no-color         Disable colored terminal output
               --help, -h         Show this help message
               --version          Show version
             
@@ -295,8 +299,7 @@ public class Main {
     }
 
     private static void runRepl(RunOptions options) {
-        System.out.println("⚡ Tode Interactive REPL (v1.0.0)");
-        System.out.println("Type exit() or press Ctrl+C to quit.\n");
+        printReplWelcomeBanner();
 
         java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
         Interpreter interpreter = new Interpreter();
@@ -346,6 +349,69 @@ public class Main {
         if (options.coverage) {
             coverageTracker.printSummary();
         }
+    }
+
+    private static void printReplWelcomeBanner() {
+        int width = 80; // Default width
+        
+        // Try to read COLUMNS env variable
+        String colsEnv = System.getenv("COLUMNS");
+        if (colsEnv != null) {
+            try {
+                int cols = Integer.parseInt(colsEnv);
+                if (cols >= 40 && cols <= 200) {
+                    width = cols;
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        
+        boolean color = thunderjs.util.Ansi.enabled;
+        
+        // Colors
+        String cyan = color ? "\u001B[1;36m" : "";
+        String green = color ? "\u001B[1;32m" : "";
+        String yellow = color ? "\u001B[33m" : "";
+        String gray = color ? "\u001B[90m" : "";
+        String reset = color ? "\u001B[0m" : "";
+        String blueBorder = color ? "\u001B[34m" : "";
+        
+        String title = "⚡ " + cyan + "TODE" + reset + " ⚡";
+        String version = gray + "Version 1.0.0" + reset;
+        String desc = yellow + "A professional, developer-oriented JavaScript runtime" + reset;
+        String exitInst = gray + "Type " + reset + green + "exit()" + reset + gray + " or press " + reset + green + "Ctrl+C" + reset + gray + " to quit." + reset;
+        
+        // Top border
+        System.out.print(blueBorder + "┌");
+        for (int i = 0; i < width - 2; i++) System.out.print("─");
+        System.out.println("┐" + reset);
+        
+        // Lines
+        printCenteredLine(title, width, blueBorder, reset);
+        printCenteredLine(version, width, blueBorder, reset);
+        printCenteredLine("", width, blueBorder, reset);
+        printCenteredLine(desc, width, blueBorder, reset);
+        printCenteredLine("", width, blueBorder, reset);
+        printCenteredLine(exitInst, width, blueBorder, reset);
+        
+        // Bottom border
+        System.out.print(blueBorder + "└");
+        for (int i = 0; i < width - 2; i++) System.out.print("─");
+        System.out.println("┘" + reset);
+        System.out.println();
+    }
+
+    private static void printCenteredLine(String text, int width, String borderStyle, String resetStyle) {
+        int visibleLength = text.replaceAll("\u001B\\[[;\\d]*m", "").length();
+        int totalSpaces = width - 2 - visibleLength;
+        if (totalSpaces < 0) totalSpaces = 0;
+        int leftSpaces = totalSpaces / 2;
+        int rightSpaces = totalSpaces - leftSpaces;
+        
+        System.out.print(borderStyle + "│" + resetStyle);
+        for (int i = 0; i < leftSpaces; i++) System.out.print(" ");
+        System.out.print(text);
+        for (int i = 0; i < rightSpaces; i++) System.out.print(" ");
+        System.out.println(borderStyle + "│" + resetStyle);
     }
 
     private static void handleAndPrintDiagnostics(Throwable e, String source, String sourceArg) {
@@ -415,6 +481,7 @@ public class Main {
         boolean repl = false;
         boolean format = false;
         boolean minify = false;
+        boolean noColor = false;
         String explainRange = null;
     }
 }

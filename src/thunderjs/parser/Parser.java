@@ -502,9 +502,9 @@ public class Parser {
         // Prefix ++ / --
         if (match(TokenType.PLUS_PLUS, TokenType.MINUS_MINUS)) {
             Token op = previous();
-            if (check(TokenType.IDENTIFIER)) {
-                Token name = advance();
-                return new Expr.Update(name, op, true);
+            Expr operand = unary();
+            if (operand instanceof Expr.Identifier || operand instanceof Expr.MemberAccess || operand instanceof Expr.ComputedAccess) {
+                return new Expr.Update(operand, op, true);
             }
             throw error(op, "Invalid prefix update operand");
         }
@@ -520,8 +520,8 @@ public class Parser {
 
         if (match(TokenType.PLUS_PLUS, TokenType.MINUS_MINUS)) {
             Token op = previous();
-            if (expr instanceof Expr.Identifier id) {
-                return new Expr.Update(id.name, op, false);
+            if (expr instanceof Expr.Identifier || expr instanceof Expr.MemberAccess || expr instanceof Expr.ComputedAccess) {
+                return new Expr.Update(expr, op, false);
             }
             throw error(op, "Invalid postfix update operand");
         }
@@ -812,23 +812,29 @@ public class Parser {
             do {
                 if (check(TokenType.RIGHT_BRACE)) break; // trailing comma
 
-                // Key can be identifier or string
-                String key;
-                if (match(TokenType.IDENTIFIER)) {
-                    key = previous().getLexeme();
-                } else if (match(TokenType.STRING)) {
-                    key = (String) previous().getLiteral();
-                } else if (match(TokenType.NUMBER)) {
-                    key = previous().getLexeme();
+                if (match(TokenType.DOT_DOT_DOT)) {
+                    Expr spread = assignment();
+                    keys.add(null);
+                    values.add(new Expr.Spread(spread));
                 } else {
-                    throw error(peek(), "Expected property name in object literal");
+                    // Key can be identifier or string
+                    String key;
+                    if (match(TokenType.IDENTIFIER)) {
+                        key = previous().getLexeme();
+                    } else if (match(TokenType.STRING)) {
+                        key = (String) previous().getLiteral();
+                    } else if (match(TokenType.NUMBER)) {
+                        key = previous().getLexeme();
+                    } else {
+                        throw error(peek(), "Expected property name in object literal");
+                    }
+
+                    consume(TokenType.COLON, "Expected ':' after property name");
+                    Expr value = assignment();
+
+                    keys.add(key);
+                    values.add(value);
                 }
-
-                consume(TokenType.COLON, "Expected ':' after property name");
-                Expr value = assignment();
-
-                keys.add(key);
-                values.add(value);
             } while (match(TokenType.COMMA));
         }
 

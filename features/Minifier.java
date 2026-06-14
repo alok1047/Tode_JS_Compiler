@@ -220,8 +220,8 @@ public class Minifier implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
     @Override
     public String visitUpdateExpr(Expr.Update expr) {
-        if (expr.isPrefix) return expr.operator.getLexeme() + expr.name.getLexeme();
-        return expr.name.getLexeme() + expr.operator.getLexeme();
+        if (expr.isPrefix) return expr.operator.getLexeme() + expr.target.accept(this);
+        return expr.target.accept(this) + expr.operator.getLexeme();
     }
 
     @Override
@@ -264,7 +264,12 @@ public class Minifier implements Expr.Visitor<String>, Stmt.Visitor<String> {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
         for (int i = 0; i < expr.keys.size(); i++) {
-            sb.append(expr.keys.get(i)).append(":").append(expr.values.get(i).accept(this));
+            String key = expr.keys.get(i);
+            if (key == null) {
+                sb.append("...").append(expr.values.get(i).accept(this));
+            } else {
+                sb.append(key).append(":").append(expr.values.get(i).accept(this));
+            }
             if (i < expr.keys.size() - 1) sb.append(",");
         }
         sb.append("}");

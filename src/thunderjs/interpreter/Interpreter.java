@@ -140,6 +140,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return Double.isNaN(Stringify.toJSNumber(args.get(0)));
         });
 
+        globals.define("isFinite", (JSCallable) (interp, args) -> {
+            if (args.isEmpty()) return false;
+            double num = Stringify.toJSNumber(args.get(0));
+            return !Double.isNaN(num) && !Double.isInfinite(num);
+        });
+
         LinkedHashMap<String, Object> consoleObj = new LinkedHashMap<>();
         consoleObj.put("log", (JSCallable) (interp, args) -> {
             ConsoleObject.log(args);
@@ -479,12 +485,53 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Object visitUpdateExpr(Expr.Update expr) {
-        Object current = environment.get(expr.name.getLexeme(), expr.name);
-        double val = toNumber(current);
-        double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
-        environment.assign(expr.name.getLexeme(), newVal, expr.name);
-        return expr.isPrefix ? newVal : val;
+        if (expr.target instanceof Expr.Identifier id) {
+            Token name = id.name;
+            Object current = environment.get(name.getLexeme(), name);
+            double val = toNumber(current);
+            double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
+            environment.assign(name.getLexeme(), newVal, name);
+            return expr.isPrefix ? newVal : val;
+        } else if (expr.target instanceof Expr.MemberAccess mem) {
+            Object obj = evaluate(mem.object);
+            if (obj instanceof LinkedHashMap<?, ?> map) {
+                String propName = mem.name.getLexeme();
+                Object current = map.get(propName);
+                double val = toNumber(current);
+                double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
+                ((LinkedHashMap<String, Object>) map).put(propName, newVal);
+                return expr.isPrefix ? newVal : val;
+            } else {
+                throw new RuntimeError("Cannot update property of non-object", mem.name);
+            }
+        } else if (expr.target instanceof Expr.ComputedAccess comp) {
+            Object obj = evaluate(comp.object);
+            Object index = evaluate(comp.index);
+            if (obj instanceof LinkedHashMap<?, ?> map) {
+                String propName = Stringify.toJSString(index);
+                Object current = map.get(propName);
+                double val = toNumber(current);
+                double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
+                ((LinkedHashMap<String, Object>) map).put(propName, newVal);
+                return expr.isPrefix ? newVal : val;
+            } else if (obj instanceof ArrayList<?> list) {
+                double indexNum = toNumber(index);
+                int idx = (int) indexNum;
+                if (idx < 0 || idx >= list.size()) {
+                    throw new RuntimeError("Index out of bounds", comp.bracket);
+                }
+                Object current = list.get(idx);
+                double val = toNumber(current);
+                double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
+                ((ArrayList<Object>) list).set(idx, newVal);
+                return expr.isPrefix ? newVal : val;
+            } else {
+                throw new RuntimeError("Cannot update computed property of non-object/array", comp.bracket);
+            }
+        }
+        throw new RuntimeError("Invalid update target", expr.operator);
     }
 
     @Override
@@ -785,16 +832,6 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (object instanceof LinkedHashMap<?, ?> map) {
             String prop = Stringify.toJSString(index);
             Object val = ((Map<String, Object>) map).get(prop);
-            if (val == null) {
-                java.util.List<String> keys = new java.util.ArrayList<>();
-                for (Object k : map.keySet()) {
-                    if (k instanceof String) keys.add((String) k);
-                }
-                String closest = SuggestionEngine.suggestProperty(prop, keys);
-                if (closest != null) {
-                    throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", expr.bracket, closest);
-                }
-            }
             return val != null ? val : JSUndefined.INSTANCE;
         }
         if (object instanceof String s) {
@@ -825,8 +862,29 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Object visitObjectLiteralExpr(Expr.ObjectLiteral expr) {
         LinkedHashMap<String, Object> map = new LinkedHashMap<>();
-        for (int i = 0; i < expr.keys.size(); i++)
-            map.put(expr.keys.get(i), evaluate(expr.values.get(i)));
+        for (int i = 0; i < expr.keys.size(); i++) {
+            String key = expr.keys.get(i);
+            Object value = evaluate(expr.values.get(i));
+            if (key == null) {
+                if (value instanceof LinkedHashMap<?, ?> spreadMap) {
+                    for (Map.Entry<?, ?> entry : spreadMap.entrySet()) {
+                        if (entry.getKey() instanceof String k) {
+                            map.put(k, entry.getValue());
+                        }
+                    }
+                } else if (value instanceof ArrayList<?> list) {
+                    for (int j = 0; j < list.size(); j++) {
+                        map.put(String.valueOf(j), list.get(j));
+                    }
+                } else if (value instanceof String str) {
+                    for (int j = 0; j < str.length(); j++) {
+                        map.put(String.valueOf(j), String.valueOf(str.charAt(j)));
+                    }
+                }
+            } else {
+                map.put(key, value);
+            }
+        }
         return map;
     }
 
@@ -1096,10 +1154,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case "sort" -> (JSCallable) (i, a) -> {
                 if (a.isEmpty()) {
                     arr.sort((x, y) -> Stringify.toJSString(x).compareTo(Stringify.toJSString(y)));
-                } else if (a.get(0) instanceof JSFunction fn) {
+                } else if (a.get(0) instanceof JSCallable cb) {
                     arr.sort((x, y) -> {
                         List<Object> cmpArgs = new ArrayList<>(); cmpArgs.add(x); cmpArgs.add(y);
-                        return (int) toNumber(callFunction(fn, cmpArgs));
+                        return (int) toNumber(invokeCallback(cb, cmpArgs, token));
                     });
                 }
                 return arr;
@@ -1108,71 +1166,71 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
             // ── Higher-order methods ────────────────────────────────
             case "map" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 List<Object> result = new ArrayList<>();
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j); cb.add(arr);
-                    result.add(callFunction(fn, cb));
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j); cbArgs.add(arr);
+                    result.add(invokeCallback(cbVal, cbArgs, token));
                 }
                 return result;
             };
             case "filter" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 List<Object> result = new ArrayList<>();
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j); cb.add(arr);
-                    if (Stringify.isTruthy(callFunction(fn, cb))) result.add(arr.get(j));
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j); cbArgs.add(arr);
+                    if (Stringify.isTruthy(invokeCallback(cbVal, cbArgs, token))) result.add(arr.get(j));
                 }
                 return result;
             };
             case "reduce" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 Object acc; int startIdx;
                 if (a.size() > 1) { acc = a.get(1); startIdx = 0; }
                 else { if (arr.isEmpty()) throw new RuntimeError("Reduce of empty array with no initial value", token); acc = arr.get(0); startIdx = 1; }
                 for (int j = startIdx; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(acc); cb.add(arr.get(j)); cb.add((double)j); cb.add(arr);
-                    acc = callFunction(fn, cb);
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(acc); cbArgs.add(arr.get(j)); cbArgs.add((double)j); cbArgs.add(arr);
+                    acc = invokeCallback(cbVal, cbArgs, token);
                 }
                 return acc;
             };
             case "find" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j);
-                    if (Stringify.isTruthy(callFunction(fn, cb))) return arr.get(j);
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j);
+                    if (Stringify.isTruthy(invokeCallback(cbVal, cbArgs, token))) return arr.get(j);
                 }
                 return JSUndefined.INSTANCE;
             };
             case "findIndex" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j);
-                    if (Stringify.isTruthy(callFunction(fn, cb))) return (double) j;
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j);
+                    if (Stringify.isTruthy(invokeCallback(cbVal, cbArgs, token))) return (double) j;
                 }
                 return -1.0;
             };
             case "some" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j);
-                    if (Stringify.isTruthy(callFunction(fn, cb))) return true;
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j);
+                    if (Stringify.isTruthy(invokeCallback(cbVal, cbArgs, token))) return true;
                 }
                 return false;
             };
             case "every" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j);
-                    if (!Stringify.isTruthy(callFunction(fn, cb))) return false;
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j);
+                    if (!Stringify.isTruthy(invokeCallback(cbVal, cbArgs, token))) return false;
                 }
                 return true;
             };
             case "forEach" -> (JSCallable) (i, a) -> {
-                JSFunction fn = (JSFunction) a.get(0);
+                Object cbVal = a.isEmpty() ? null : a.get(0);
                 for (int j = 0; j < arr.size(); j++) {
-                    List<Object> cb = new ArrayList<>(); cb.add(arr.get(j)); cb.add((double)j); cb.add(arr);
-                    callFunction(fn, cb);
+                    List<Object> cbArgs = new ArrayList<>(); cbArgs.add(arr.get(j)); cbArgs.add((double)j); cbArgs.add(arr);
+                    invokeCallback(cbVal, cbArgs, token);
                 }
                 return JSUndefined.INSTANCE;
             };
@@ -1244,6 +1302,16 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     private double toNumber(Object value) { return Stringify.toJSNumber(value); }
 
+    public Object invokeCallback(Object callback, List<Object> arguments, Token token) {
+        if (callback instanceof JSFunction fn) {
+            return callFunction(fn, arguments);
+        } else if (callback instanceof JSCallable callable) {
+            return callable.call(this, arguments);
+        } else {
+            throw new RuntimeError("TypeError: " + Stringify.stringify(callback) + " is not a function", token);
+        }
+    }
+
     public int getLine(Expr expr) {
         if (expr == null) return 0;
         if (expr instanceof Expr.Literal e) return e.token != null ? e.token.getLine() : 0;
@@ -1255,7 +1323,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (expr instanceof Expr.MemberAssign e) return e.name != null ? e.name.getLine() : 0;
         if (expr instanceof Expr.ComputedAssign e) return e.bracket != null ? e.bracket.getLine() : 0;
         if (expr instanceof Expr.CompoundAssign e) return e.operator != null ? e.operator.getLine() : 0;
-        if (expr instanceof Expr.Update e) return e.name != null ? e.name.getLine() : 0;
+        if (expr instanceof Expr.Update e) return e.operator != null ? e.operator.getLine() : 0;
         if (expr instanceof Expr.Call e) return e.paren != null ? e.paren.getLine() : 0;
         if (expr instanceof Expr.MemberAccess e) return e.name != null ? e.name.getLine() : 0;
         if (expr instanceof Expr.ComputedAccess e) return e.bracket != null ? e.bracket.getLine() : 0;

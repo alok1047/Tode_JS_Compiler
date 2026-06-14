@@ -526,9 +526,9 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
         @Override
         public String visitUpdateExpr(Expr.Update expr) {
             if (expr.isPrefix) {
-                return expr.operator.getLexeme() + expr.name.getLexeme();
+                return expr.operator.getLexeme() + toSource(expr.target);
             } else {
-                return expr.name.getLexeme() + expr.operator.getLexeme();
+                return toSource(expr.target) + expr.operator.getLexeme();
             }
         }
 
@@ -571,7 +571,12 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
             StringBuilder sb = new StringBuilder();
             sb.append("{ ");
             for (int i = 0; i < expr.keys.size(); i++) {
-                sb.append(expr.keys.get(i)).append(": ").append(toSource(expr.values.get(i)));
+                String key = expr.keys.get(i);
+                if (key == null) {
+                    sb.append("...").append(toSource(expr.values.get(i)));
+                } else {
+                    sb.append(key).append(": ").append(toSource(expr.values.get(i)));
+                }
                 if (i < expr.keys.size() - 1) sb.append(", ");
             }
             sb.append(" }");

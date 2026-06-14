@@ -1,3 +1,7 @@
+/*
+Expected Error:
+TypeError
+*/
 function third() {
   let a = undefined;
   let b = a.foo;

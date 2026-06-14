@@ -228,12 +228,12 @@ public abstract class Expr {
      * Update expression: x++ or x-- (postfix only for now).
      */
     public static class Update extends Expr {
-        public final Token name;
+        public final Expr target;
         public final Token operator;
         public final boolean isPrefix;
 
-        public Update(Token name, Token operator, boolean isPrefix) {
-            this.name = name;
+        public Update(Expr target, Token operator, boolean isPrefix) {
+            this.target = target;
             this.operator = operator;
             this.isPrefix = isPrefix;
         }
