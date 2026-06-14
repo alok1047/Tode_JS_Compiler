@@ -208,12 +208,12 @@ public abstract class Expr {
      * Compound assignment: x += expr, x -= expr, x *= expr, x /= expr.
      */
     public static class CompoundAssign extends Expr {
-        public final Token name;
+        public final Expr target;
         public final Token operator;
         public final Expr value;
 
-        public CompoundAssign(Token name, Token operator, Expr value) {
-            this.name = name;
+        public CompoundAssign(Expr target, Token operator, Expr value) {
+            this.target = target;
             this.operator = operator;
             this.value = value;
         }

@@ -16,11 +16,11 @@ import java.util.TreeMap;
 
 public class TestRunner {
     private static final Map<String, String> EXPECTED_OUTPUTS = new TreeMap<>(Map.of(
-        "tests/odd_even.js", "7 is Odd\n",
-        "tests/pattern.js", "*\n**\n***\n****\n*****\n",
-        "tests/armstrong.js", "true\nfalse\n",
-        "tests/reverseArray.js", "Original: 1, 2, 3, 4, 5\nReversed: 5, 4, 3, 2, 1\n",
-        "tests/palindrome.js", "racecar is a Palindrome\n"
+        "tests/basic/odd_even.js", "7 is Odd\n",
+        "tests/basic/pattern.js", "*\n**\n***\n****\n*****\n",
+        "tests/basic/armstrong.js", "true\nfalse\n",
+        "tests/basic/reverseArray.js", "Original: 1, 2, 3, 4, 5\nReversed: 5, 4, 3, 2, 1\n",
+        "tests/basic/palindrome.js", "racecar is a Palindrome\n"
     ));
 
     public static void main(String[] args) {

@@ -465,8 +465,41 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Object visitCompoundAssignExpr(Expr.CompoundAssign expr) {
-        Object current = environment.get(expr.name.getLexeme(), expr.name);
+        Object obj = null;
+        Object index = null;
+        Object current = null;
+        Token errorToken = expr.operator;
+
+        if (expr.target instanceof Expr.Identifier id) {
+            current = environment.get(id.name.getLexeme(), id.name);
+            errorToken = id.name;
+        } else if (expr.target instanceof Expr.MemberAccess mem) {
+            obj = evaluate(mem.object);
+            if (obj instanceof LinkedHashMap<?, ?> map) {
+                current = map.get(mem.name.getLexeme());
+                errorToken = mem.name;
+            } else {
+                throw new RuntimeError("Cannot read property of non-object", mem.name);
+            }
+        } else if (expr.target instanceof Expr.ComputedAccess comp) {
+            obj = evaluate(comp.object);
+            index = evaluate(comp.index);
+            errorToken = comp.bracket;
+            if (obj instanceof LinkedHashMap<?, ?> map) {
+                current = map.get(Stringify.toJSString(index));
+            } else if (obj instanceof ArrayList<?> list) {
+                int idx = (int) toNumber(index);
+                if (idx < 0 || idx >= list.size()) {
+                    throw new RuntimeError("Index out of bounds", comp.bracket);
+                }
+                current = list.get(idx);
+            } else {
+                throw new RuntimeError("Cannot read property of non-object/array", comp.bracket);
+            }
+        }
+
         Object right = evaluate(expr.value);
         Object result = switch (expr.operator.getType()) {
             case PLUS_EQUAL -> {
@@ -480,7 +513,19 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             case PERCENT_EQUAL -> toNumber(current) % toNumber(right);
             default -> throw new RuntimeError("Unknown compound op: " + expr.operator.getLexeme(), expr.operator);
         };
-        environment.assign(expr.name.getLexeme(), result, expr.name);
+
+        if (expr.target instanceof Expr.Identifier id) {
+            environment.assign(id.name.getLexeme(), result, id.name);
+        } else if (expr.target instanceof Expr.MemberAccess mem) {
+            ((LinkedHashMap<String, Object>) obj).put(mem.name.getLexeme(), result);
+        } else if (expr.target instanceof Expr.ComputedAccess comp) {
+            if (obj instanceof LinkedHashMap) {
+                ((LinkedHashMap<String, Object>) obj).put(Stringify.toJSString(index), result);
+            } else {
+                ((ArrayList<Object>) obj).set((int) toNumber(index), result);
+            }
+        }
+
         return result;
     }
 

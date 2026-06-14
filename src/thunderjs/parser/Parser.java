@@ -341,8 +341,8 @@ public class Parser {
             Token op = previous();
             Expr value = assignment();
 
-            if (expr instanceof Expr.Identifier id) {
-                return new Expr.CompoundAssign(id.name, op, value);
+            if (expr instanceof Expr.Identifier || expr instanceof Expr.MemberAccess || expr instanceof Expr.ComputedAccess) {
+                return new Expr.CompoundAssign(expr, op, value);
             }
             throw error(op, "Invalid compound assignment target");
         }

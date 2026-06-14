@@ -1,107 +1,121 @@
+![Node vs Tode](screenshots/image.png)
 # ⚡ Tode (Powered by ThunderJS)
 
-Tode is a professional, developer-oriented JavaScript runtime written from scratch in Java 21, featuring rich error diagnostics, smart suggestions, call-stack tracing, narration-based Explain Mode, and a built-in Date subsystem. Built entirely without third-party dependencies, it serves as an educational and inspection-friendly execution engine.
+### 📖 About
+Tode is a high-performance JavaScript runtime built completely from scratch in Java 21, without any external scripting engines (like Nashorn, Rhino, or GraalJS) or parser libraries. It features a handwritten lexer, parser, AST-based interpreter, REPL, and a rich developer experience with advanced source-mapped error diagnostics and suggestion-based recovery.
 
 ---
 
-## 🚀 Quick Start & Execution
+## 🚀 How to Run the Project
 
-### 1. Build the Executable JAR
-First, compile and package the runtime using the build script:
-```bash
-bash src/build.sh
-```
-This compiles the source code and packages it into `tode.jar` in the root folder.
+### Prerequisites
+- **Java 21+** (Verify using `java --version`)
 
-### 2. Running Files
-Execute any JavaScript file directly using the packaged JAR:
+### Run a JavaScript File
 ```bash
-java -jar tode.jar tests/test1_oddeven.js
+java -jar tode.jar <path-to-file.js>
 ```
 
-### 3. Interactive REPL
-Launch the interactive shell by running the JAR with no arguments:
+### Start the Interactive REPL
 ```bash
 java -jar tode.jar
 ```
 
-### 4. Running Tests
-Run integration tests or the 50-program stress suite directly from the packaged JAR:
-```bash
-# Run integration regression tests
-java -cp tode.jar tests.TestRunner
+---
 
-# Run the 50-program stress suite
+## 🧪 Testing Suite (For Judges)
+
+We provide two distinct runners to validate JavaScript compatibility, stress test edge cases, and run benchmarks:
+
+### 1. Basic Test Runner
+Runs the 5 standard verification test cases (Armstrong numbers, Odd/Even check, Palindromes, Patterns, and Array reversal):
+```bash
+java -cp tode.jar tests.TestRunner
+```
+
+### 2. Comprehensive Stress Tester
+Recursively scans the test suite, parses assertions, runs individual sandboxed processes, and generates a markdown report:
+```bash
 java -cp tode.jar tests.StressTester
 ```
+*Tip: Detailed execution reports are saved to `tests/hidden_test_report.md`.*
 
 ---
 
-## 🛠️ CLI Introspection Flags
+## 🛠️ Developer Tools & Error Diagnostics
 
-Evaluate code with developer diagnostics:
-* `java -jar tode.jar --ast file.js` — Formats and prints parsed AST as a Unicode tree.
-* `java -jar tode.jar --trace file.js` — Prints step-by-step execution trace, variables, and function calls.
-* `java -jar tode.jar --explain file.js` — Narrates code execution in plain English.
-* `java -jar tode.jar --coverage file.js` — Shows a summary of language features used.
-* `java -jar tode.jar --bench file.js` — Reports execution time in milliseconds.
-* `java -jar tode.jar --format file.js` — Pretty-prints / auto-formats JS source code via AST.
-* `java -jar tode.jar --minify file.js` — Outputs minified (compressed) JS source code.
+Tode offers custom developer flags to introspect execution or debug source files:
 
----
-
-## ✨ Features Matrix
-
-* **Variables & Scope**: Lexical block scoping (`let`, `const`, `var`), variable shadowing, and constant enforcement.
-* **Operators**: Arithmetic, comparisons, logical, assignment, postfix/prefix update (`++`/`--`), and ternary operators.
-* **Control Flow**: `if`/`else`, `switch/case/default`, `for`, `while`, `do-while` loops (supports `break`/`continue`).
-* **Functions**: Closures, arrow functions, default parameters, rest parameters (`...`), and nested calls.
-* **Data Types**: Native representation of arrays (includes `map`/`filter`/`reduce`/`sort` etc.), strings (template literals), and object literals.
-* **Date Subsystem**: Production-grade JS-compliant `Date` constructor, getters/setters, static methods, and ISO/UTC string formatting.
-
----
-
-## 🏗️ Repository Structure & Runtime Pipeline
-
-```
-Tode/
-├── src/               # Core runtime source code (Java)
-│   ├── thunderjs/     # Core engine (lexer, parser, interpreter, runtime, builtins, etc.)
-│   ├── docs/          # Validation report
-│   ├── build.sh       # Compile and JAR packaging script
-│   └── tode           # Development launcher script
-├── features/          # Developer introspection features (Java)
-│   └── (ASTPrinter, Formatter, Minifier, TraceEngine, ExplainEngine, CoverageTracker)
-├── tests/             # JavaScript test files, reports, and Java test classes
-│   ├── errors/        # Error diagnostic test cases
-│   ├── TestRunner.java # Integration test runner (Java)
-│   ├── StressTester.java # 50-program stress suite runner (Java)
-│   └── hidden_test_report.md # Generated stress suite execution report
-├── README.md          # Project documentation
-└── tode.jar           # Packaged executable runtime JAR (generated)
+```bash
+java -jar tode.jar --ast file.js       # Print Abstract Syntax Tree
+java -jar tode.jar --trace file.js     # Trace execution step-by-step
+java -jar tode.jar --explain file.js   # Human-readable execution explanation
+java -jar tode.jar --coverage file.js  # Measure code path coverage
+java -jar tode.jar --bench file.js     # Benchmark execution speed
+java -jar tode.jar --format file.js    # Format Javascript source code
+java -jar tode.jar --minify file.js    # Minify Javascript source code
 ```
 
-```
-[JS Source Code] ──► [Lexical Scanner] ──► [AST Parser] ──► [Introspection] ──► [Interpreter] ──► [stdout]
-```
+### 🔍 Rich Diagnostics & Typo Suggestions
+If your code has syntax or runtime errors, Tode maps the failure to the source line and column, offering smart typo corrections:
 
----
-
-## 💡 Rich Error Diagnostics & Intelligent Suggestions
-
-Tode includes a compiler-grade diagnostics system and local smart suggestions to help developers identify and fix bugs:
-* **Rich Diagnostic Output**: Every syntax error, lexer error, and runtime error displays with error type, message, filename, line, column, source code snippet, and a caret range pointing to the error site.
-* **Call Stack Tracing**: On runtime errors, a complete call stack trace is printed (innermost first) detailing function name, file, and line/column.
-* **Intelligent Typo Suggestions**: Automatically detects typos in variable names, global builtins, custom functions, and object properties (e.g. on `Math`, `Object`, `console`, and `Date` APIs) using Levenshtein distance (<= 2).
-
-### Example Diagnostic:
 ```text
-ReferenceError: usernme is not defined
-  File: login.js
-  Line: 18, Column: 15
+❌ ReferenceError: usernme is not defined
 
-  18 | console.log(usernme);
-                   ^^^^^^^
+File: login.js
+Line: 18
+Column: 15
 
-  💡 Did you mean: username
+18 | console.log(usernme);
+                 ^^^^^^^
+
+💡 Did you mean: username
 ```
+
+---
+
+## 🏗️ Project Architecture
+
+```text
+src/
+└── thunderjs/
+    ├── lexer/           # Lexical analysis & Tokenization
+    ├── parser/          # AST Generation & Operator Precedence parsing
+    ├── ast/             # Statement & Expression AST nodes
+    ├── interpreter/     # Environment-scoped Tree-Walk Interpreter
+    ├── runtime/         # Built-in data types (JSCallable, JSNull, JSUndefined, JSFunction, etc.)
+    └── builtins/        # Built-in constructors/objects (Console, Math, Date)
+features/                # Developer tools (Explain, Formatter, Minifier, ASTPrinter, etc.)
+tests/                   # Organized test suites
+├── basic/               # 5 standard verification test cases
+└── datatypes/           # 18 subfolders spanning 55+ feature/datatype stress tests
+```
+
+---
+
+## ⚙️ Runtime Pipeline
+
+```text
+  JS Source File ──> [ Lexer ] ──> [ Parser ] ──> [ AST Structure ]
+                                                          │
+   Output / REPL <── [ PrintStream ] <── [ Interpreter ] ◄┘
+```
+
+---
+
+## 🌟 Supported Language Features
+
+- **Variables & Scoping**: `let`, `const`, `var` (lexical block-scoping)
+- **Primitives**: Numbers, Strings, Booleans, `null`, `undefined`
+- **Operators**: Full arithmetic, comparison, logical operations, updates (`++`/`--`), and compound assignments (`+=`, `-=`, etc.)
+- **Control Flow**: `if/else`, `switch/case`
+- **Loops**: `for`, `while`, `do-while`
+- **Collections & Data Structures**:
+  - **Arrays**: Native methods (`push`, `pop`, `join`, `reverse`, `length`)
+  - **Objects**: Native property lookups, bracket notations, nested modifications
+- **Functions**: Closures, arrow functions, parameter scope, recursion
+- **Callbacks**: General callback parameters for builtins (`map`, `filter`, `reduce`, `find`, `some`, `every`)
+- **Builtin Modules**:
+  - `Math`: `Math.floor`, `Math.ceil`, `Math.random`, `Math.abs`, `Math.max`, `Math.min`, `Math.pow`, `Math.sqrt`
+  - `Date`: Fully functional `Date` constructor, getters/setters, timestamps, ISO string conversion
+- **ES6 Features**: Spread & Rest operators (`...`) for objects, arrays, and parameters

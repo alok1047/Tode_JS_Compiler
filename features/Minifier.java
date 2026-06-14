@@ -215,7 +215,7 @@ public class Minifier implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
     @Override
     public String visitCompoundAssignExpr(Expr.CompoundAssign expr) {
-        return expr.name.getLexeme() + expr.operator.getLexeme() + expr.value.accept(this);
+        return expr.target.accept(this) + expr.operator.getLexeme() + expr.value.accept(this);
     }
 
     @Override

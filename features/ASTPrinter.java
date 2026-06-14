@@ -520,7 +520,7 @@ public class ASTPrinter implements Expr.Visitor<ASTPrinter.TreeNode>, Stmt.Visit
 
         @Override
         public String visitCompoundAssignExpr(Expr.CompoundAssign expr) {
-            return expr.name.getLexeme() + " " + expr.operator.getLexeme() + " " + toSource(expr.value);
+            return toSource(expr.target) + " " + expr.operator.getLexeme() + " " + toSource(expr.value);
         }
 
         @Override
