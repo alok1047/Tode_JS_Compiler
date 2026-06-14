@@ -160,13 +160,17 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         globals.define("Math", mathObj);
 
         LinkedHashMap<String, Object> objectObj = new LinkedHashMap<>();
-        for (String key : List.of("keys", "values", "entries")) {
+        for (String key : List.of("keys", "values", "entries", "getOwnPropertySymbols")) {
             objectObj.put(key, getObjectStaticMethod(key));
         }
         globals.define("Object", objectObj);
         globals.define("Date", new DateConstructor());
         globals.define("Set", new SetConstructor());
         globals.define("Map", new MapConstructor());
+        globals.define("Symbol", (JSCallable) (interp, args) -> {
+            String desc = args.isEmpty() ? null : Stringify.toJSString(args.get(0));
+            return new JSSymbol(desc);
+        });
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -488,7 +492,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         Object obj = evaluate(expr.object);
         Object value = evaluate(expr.value);
         if (obj instanceof LinkedHashMap) {
-            ((Map<String, Object>) obj).put(expr.name.getLexeme(), value);
+            ((Map<Object, Object>) obj).put(expr.name.getLexeme(), value);
             return value;
         }
         throw new RuntimeError("Cannot set property '" + expr.name.getLexeme() + "' of " +
@@ -510,7 +514,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             return value;
         }
         if (obj instanceof LinkedHashMap) {
-            ((Map<String, Object>) obj).put(Stringify.toJSString(index), value);
+            ((Map<Object, Object>) obj).put(getPropertyKey(index), value);
             return value;
         }
         throw new RuntimeError("Cannot set property of " + Stringify.stringify(obj),
@@ -541,7 +545,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             index = evaluate(comp.index);
             errorToken = comp.bracket;
             if (obj instanceof LinkedHashMap<?, ?> map) {
-                current = map.get(Stringify.toJSString(index));
+                current = map.get(getPropertyKey(index));
             } else if (obj instanceof ArrayList<?> list) {
                 int idx = (int) toNumber(index);
                 if (idx < 0 || idx >= list.size()) {
@@ -570,10 +574,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (expr.target instanceof Expr.Identifier id) {
             environment.assign(id.name.getLexeme(), result, id.name);
         } else if (expr.target instanceof Expr.MemberAccess mem) {
-            ((LinkedHashMap<String, Object>) obj).put(mem.name.getLexeme(), result);
+            ((LinkedHashMap<Object, Object>) obj).put(mem.name.getLexeme(), result);
         } else if (expr.target instanceof Expr.ComputedAccess comp) {
             if (obj instanceof LinkedHashMap) {
-                ((LinkedHashMap<String, Object>) obj).put(Stringify.toJSString(index), result);
+                ((LinkedHashMap<Object, Object>) obj).put(getPropertyKey(index), result);
             } else {
                 ((ArrayList<Object>) obj).set((int) toNumber(index), result);
             }
@@ -608,11 +612,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             Object obj = evaluate(comp.object);
             Object index = evaluate(comp.index);
             if (obj instanceof LinkedHashMap<?, ?> map) {
-                String propName = Stringify.toJSString(index);
+                Object propName = getPropertyKey(index);
                 Object current = map.get(propName);
                 double val = toNumber(current);
                 double newVal = expr.operator.getType() == TokenType.PLUS_PLUS ? val + 1 : val - 1;
-                ((LinkedHashMap<String, Object>) map).put(propName, newVal);
+                ((LinkedHashMap<Object, Object>) map).put(propName, newVal);
                 return expr.isPrefix ? newVal : val;
             } else if (obj instanceof ArrayList<?> list) {
                 double indexNum = toNumber(index);
@@ -644,7 +648,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         } else if (expr.callee instanceof Expr.ComputedAccess computed) {
             receiver = evaluate(computed.object);
             Object index = evaluate(computed.index);
-            callee = evaluateMemberAccess(receiver, Stringify.toJSString(index), computed.bracket);
+            callee = evaluateMemberAccess(receiver, getPropertyKey(index), computed.bracket);
         } else {
             callee = evaluate(expr.callee);
         }
@@ -660,11 +664,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         for (Expr arg : expr.arguments) {
             if (arg instanceof Expr.Spread spread) {
                 Object spreadVal = evaluate(spread.expression);
-                if (spreadVal instanceof ArrayList<?> arr) {
-                    args.addAll((List<Object>) arr);
-                } else {
-                    throw new RuntimeError("Cannot spread non-iterable", expr.paren);
-                }
+                args.addAll(evaluateIterable(spreadVal, expr.paren));
             } else {
                 args.add(evaluate(arg));
             }
@@ -745,11 +745,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             for (Expr arg : expr.arguments) {
                 if (arg instanceof Expr.Spread spread) {
                     Object spreadVal = evaluate(spread.expression);
-                    if (spreadVal instanceof ArrayList<?> arr) {
-                        args.addAll((List<Object>) arr);
-                    } else {
-                        throw new RuntimeError("Cannot spread non-iterable", expr.keyword);
-                    }
+                    args.addAll(evaluateIterable(spreadVal, expr.keyword));
                 } else {
                     args.add(evaluate(arg));
                 }
@@ -893,59 +889,62 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @SuppressWarnings("unchecked")
-    private Object evaluateMemberAccess(Object object, String prop, Token token) {
+    private Object evaluateMemberAccess(Object object, Object prop, Token token) {
+        String propStr = Stringify.toJSString(prop);
         if (object instanceof DateObject dateObj) {
-            return dateObj.getProperty(prop, token != null ? token.getLine() : 0);
+            return dateObj.getProperty(propStr, token != null ? token.getLine() : 0);
         }
         if (object instanceof DateConstructor dateConst) {
-            return dateConst.getProperty(prop);
+            return dateConst.getProperty(propStr);
         }
         if (object instanceof SetObject setObj) {
-            return setObj.getProperty(prop, token != null ? token.getLine() : 0);
+            return setObj.getProperty(propStr, token != null ? token.getLine() : 0);
         }
         if (object instanceof MapObject mapObj) {
-            return mapObj.getProperty(prop, token != null ? token.getLine() : 0);
+            return mapObj.getProperty(propStr, token != null ? token.getLine() : 0);
         }
 
         // ── String properties/methods ───────────────────────────────
-        if (object instanceof String s) return getStringProperty(s, prop, token);
+        if (object instanceof String s) return getStringProperty(s, propStr, token);
 
         // ── Array properties/methods ────────────────────────────────
-        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, prop, token);
+        if (object instanceof ArrayList<?> arr) return getArrayProperty((List<Object>) arr, propStr, token);
 
         // ── Object properties ───────────────────────────────────────
         if (object instanceof LinkedHashMap<?, ?> map) {
-            Object val = ((Map<String, Object>) map).get(prop);
+            Object val = ((Map<Object, Object>) map).get(prop);
             if (val != null) return val;
 
             // Prototype lookup
-            if ("hasOwnProperty".equals(prop)) {
-                return (JSCallable) (interpreter, args) -> {
-                    if (args.isEmpty()) return false;
-                    String checkProp = Stringify.toJSString(args.get(0));
-                    return map.containsKey(checkProp);
-                };
-            }
-            if ("toString".equals(prop)) {
-                return (JSCallable) (interpreter, args) -> "[object Object]";
+            if (prop instanceof String) {
+                if ("hasOwnProperty".equals(propStr)) {
+                    return (JSCallable) (interpreter, args) -> {
+                        if (args.isEmpty()) return false;
+                        Object checkProp = getPropertyKey(args.get(0));
+                        return map.containsKey(checkProp);
+                    };
+                }
+                if ("toString".equals(propStr)) {
+                    return (JSCallable) (interpreter, args) -> "[object Object]";
+                }
             }
 
             java.util.List<String> keys = new java.util.ArrayList<>();
             for (Object k : map.keySet()) {
                 if (k instanceof String) keys.add((String) k);
             }
-            String closest = SuggestionEngine.suggestProperty(prop, keys);
+            String closest = SuggestionEngine.suggestProperty(propStr, keys);
             if (closest != null && token != null) {
-                throw new RuntimeError("TypeError: Cannot read property '" + prop + "'", token, closest);
+                throw new RuntimeError("TypeError: Cannot read property '" + propStr + "'", token, closest);
             }
             return JSUndefined.INSTANCE;
         }
 
         if (token != null) {
-            throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
+            throw new RuntimeError("TypeError: Cannot read property '" + propStr + "' of " +
                     Stringify.stringify(object), token);
         } else {
-            throw new RuntimeError("TypeError: Cannot read property '" + prop + "' of " +
+            throw new RuntimeError("TypeError: Cannot read property '" + propStr + "' of " +
                     Stringify.stringify(object), 0);
         }
     }
@@ -963,7 +962,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     public Object visitComputedAccessExpr(Expr.ComputedAccess expr) {
         Object object = evaluate(expr.object);
         Object index = evaluate(expr.index);
-        String prop = Stringify.toJSString(index);
+        Object prop = getPropertyKey(index);
 
         if (object instanceof ArrayList<?> arr) {
             double idxD = toNumber(index);
@@ -988,8 +987,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         for (Expr el : expr.elements) {
             if (el instanceof Expr.Spread spread) {
                 Object sv = evaluate(spread.expression);
-                if (sv instanceof ArrayList<?> arr) elements.addAll((List<Object>) arr);
-                else throw new RuntimeError("Cannot spread non-iterable", expr.bracket);
+                elements.addAll(evaluateIterable(sv, expr.bracket));
             } else {
                 elements.add(evaluate(el));
             }
@@ -998,17 +996,16 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Object visitObjectLiteralExpr(Expr.ObjectLiteral expr) {
-        LinkedHashMap<String, Object> map = new LinkedHashMap<>();
+        LinkedHashMap<Object, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < expr.keys.size(); i++) {
             Object keyObj = expr.keys.get(i);
             Object value = evaluate(expr.values.get(i));
             if (keyObj == null) {
                 if (value instanceof LinkedHashMap<?, ?> spreadMap) {
                     for (Map.Entry<?, ?> entry : spreadMap.entrySet()) {
-                        if (entry.getKey() instanceof String k) {
-                            map.put(k, entry.getValue());
-                        }
+                        map.put(entry.getKey(), entry.getValue());
                     }
                 } else if (value instanceof ArrayList<?> list) {
                     for (int j = 0; j < list.size(); j++) {
@@ -1020,9 +1017,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     }
                 }
             } else {
-                String key;
+                Object key;
                 if (keyObj instanceof Expr computedKeyExpr) {
-                    key = Stringify.toJSString(evaluate(computedKeyExpr));
+                    key = getPropertyKey(evaluate(computedKeyExpr));
                 } else {
                     key = (String) keyObj;
                 }
@@ -1078,6 +1075,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (val instanceof Double) return "number";
         if (val instanceof String) return "string";
         if (val instanceof Boolean) return "boolean";
+        if (val instanceof JSSymbol) return "symbol";
         if (val instanceof JSCallable || val instanceof JSFunction) return "function";
         return "object";
     }
@@ -1119,7 +1117,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
                 }
                 if (obj instanceof LinkedHashMap<?, ?> map) {
-                    return new ArrayList<>(((Map<String, Object>) map).keySet());
+                    List<Object> keys = new ArrayList<>();
+                    for (Object k : map.keySet()) {
+                        if (k instanceof String) {
+                            keys.add(k);
+                        }
+                    }
+                    return keys;
                 }
                 if (obj instanceof String s) {
                     List<Object> keys = new ArrayList<>();
@@ -1144,7 +1148,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
                 }
                 if (obj instanceof LinkedHashMap<?, ?> map) {
-                    return new ArrayList<>(((Map<String, Object>) map).values());
+                    List<Object> values = new ArrayList<>();
+                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                        if (entry.getKey() instanceof String) {
+                            values.add(entry.getValue());
+                        }
+                    }
+                    return values;
                 }
                 if (obj instanceof String s) {
                     List<Object> values = new ArrayList<>();
@@ -1167,9 +1177,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 if (obj instanceof LinkedHashMap<?, ?> map) {
                     List<Object> entries = new ArrayList<>();
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
-                        List<Object> pair = new ArrayList<>();
-                        pair.add(entry.getKey()); pair.add(entry.getValue());
-                        entries.add(pair);
+                        if (entry.getKey() instanceof String) {
+                            List<Object> pair = new ArrayList<>();
+                            pair.add(entry.getKey()); pair.add(entry.getValue());
+                            entries.add(pair);
+                        }
                     }
                     return entries;
                 }
@@ -1192,6 +1204,22 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     return entries;
                 }
                 return new ArrayList<>();
+            };
+            case "getOwnPropertySymbols" -> (JSCallable) (i, a) -> {
+                if (a.isEmpty()) throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                Object obj = a.get(0);
+                if (obj == null || obj instanceof JSUndefined || obj instanceof JSNull) {
+                    throw new RuntimeError("TypeError: Cannot convert undefined or null to object");
+                }
+                List<Object> symbols = new ArrayList<>();
+                if (obj instanceof LinkedHashMap<?, ?> map) {
+                    for (Object k : map.keySet()) {
+                        if (k instanceof JSSymbol) {
+                            symbols.add(k);
+                        }
+                    }
+                }
+                return symbols;
             };
             default -> throw new RuntimeError("TypeError: Object." + name + " is not a function");
         };
@@ -1450,6 +1478,16 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                 for (int j = Math.max(0,start); j < Math.min(arr.size(),end); j++) arr.set(j, fv);
                 return arr;
             };
+            case "entries" -> (JSCallable) (i, a) -> {
+                List<List<Object>> entries = new ArrayList<>();
+                for (int j = 0; j < arr.size(); j++) {
+                    List<Object> entry = new ArrayList<>();
+                    entry.add((double) j);
+                    entry.add(arr.get(j));
+                    entries.add(entry);
+                }
+                return entries;
+            };
             default -> throw new RuntimeError("TypeError: arr." + prop + " is not a function", token);
         };
     }
@@ -1604,7 +1642,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     ((List<Object>) list).set(idx, JSUndefined.INSTANCE);
                 }
             } else if (obj instanceof Map<?, ?> map) {
-                map.remove(Stringify.toJSString(index));
+                map.remove(getPropertyKey(index));
             }
             return true;
         }
@@ -1634,7 +1672,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         List<String> keys = new java.util.ArrayList<>();
         if (objVal instanceof Map<?, ?> map) {
             for (Object key : map.keySet()) {
-                keys.add(Stringify.toJSString(key));
+                if (key instanceof String) {
+                    keys.add((String) key);
+                }
             }
         } else if (objVal instanceof List<?> list) {
             for (int i = 0; i < list.size(); i++) {
@@ -1779,11 +1819,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
                     destructureTarget(valExpr, val, isConst, isDefine, env);
                 } else {
                     if (valExpr instanceof Expr.Spread spread) {
-                        LinkedHashMap<String, Object> restMap = new LinkedHashMap<>();
+                        LinkedHashMap<Object, Object> restMap = new LinkedHashMap<>();
                         if (value instanceof Map<?, ?> valMap) {
                             for (Map.Entry<?, ?> entry : valMap.entrySet()) {
-                                String k = Stringify.toJSString(entry.getKey());
-                                if (!keysUsed.contains(k)) {
+                                Object k = entry.getKey();
+                                String kStr = Stringify.toJSString(k);
+                                if (!keysUsed.contains(kStr)) {
                                     restMap.put(k, entry.getValue());
                                 }
                             }
@@ -1796,12 +1837,22 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             List<Object> list = null;
             if (value instanceof List<?>) {
                 list = (List<Object>) value;
+            } else if (value instanceof SetObject setObj) {
+                list = new ArrayList<>(setObj.getElements());
+            } else if (value instanceof MapObject mapObj) {
+                list = new ArrayList<>();
+                for (Map.Entry<Object, Object> entry : mapObj.getMap().entrySet()) {
+                    ArrayList<Object> pair = new ArrayList<>();
+                    pair.add(entry.getKey());
+                    pair.add(entry.getValue());
+                    list.add(pair);
+                }
             } else if (value instanceof String s) {
                 list = new ArrayList<>();
                 for (int i = 0; i < s.length(); i++) {
                     list.add(String.valueOf(s.charAt(i)));
                 }
-            } else if (value == null || value instanceof JSUndefined || value instanceof JSNull) {
+            } else {
                 throw new RuntimeError("TypeError: " + Stringify.stringify(value) + " is not iterable", getLine(pattern));
             }
 
@@ -1852,6 +1903,39 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         } else {
             throw new RuntimeError("TypeError: Invalid destructuring target", getLine(target));
         }
+    }
+
+    private Object getPropertyKey(Object index) {
+        if (index instanceof JSSymbol) return index;
+        return Stringify.toJSString(index);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Object> evaluateIterable(Object value, Token token) {
+        if (value instanceof ArrayList<?> arr) {
+            return (List<Object>) arr;
+        }
+        if (value instanceof SetObject setObj) {
+            return new ArrayList<>(setObj.getElements());
+        }
+        if (value instanceof MapObject mapObj) {
+            List<Object> entries = new ArrayList<>();
+            for (Map.Entry<Object, Object> entry : mapObj.getMap().entrySet()) {
+                ArrayList<Object> pair = new ArrayList<>();
+                pair.add(entry.getKey());
+                pair.add(entry.getValue());
+                entries.add(pair);
+            }
+            return entries;
+        }
+        if (value instanceof String s) {
+            List<Object> chars = new ArrayList<>();
+            for (int i = 0; i < s.length(); i++) {
+                chars.add(String.valueOf(s.charAt(i)));
+            }
+            return chars;
+        }
+        throw new RuntimeError("Cannot spread non-iterable", token);
     }
 
     private Object getObjectProperty(Object object, String prop, int line) {

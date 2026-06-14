@@ -7,6 +7,7 @@ import thunderjs.runtime.JSUndefined;
 import thunderjs.runtime.DateObject;
 import thunderjs.runtime.SetObject;
 import thunderjs.runtime.MapObject;
+import thunderjs.runtime.JSSymbol;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -47,6 +48,7 @@ public class Stringify {
 
         if (value instanceof Boolean) return value.toString();
         if (value instanceof String) return (String) value;
+        if (value instanceof JSSymbol sym) return sym.toString();
 
         if (value instanceof ArrayList<?> arr) {
             return stringifyArray((List<Object>) arr);
@@ -82,6 +84,7 @@ public class Stringify {
     @SuppressWarnings("unchecked")
     public static String inspect(Object value) {
         if (value instanceof String s) return "'" + s + "'";
+        if (value instanceof JSSymbol sym) return sym.toString();
         if (value instanceof ArrayList<?> arr) {
             return inspectArray((List<Object>) arr);
         }
