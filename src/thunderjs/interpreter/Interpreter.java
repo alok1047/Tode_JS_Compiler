@@ -166,6 +166,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         globals.define("Object", objectObj);
         globals.define("Date", new DateConstructor());
         globals.define("Set", new SetConstructor());
+        globals.define("Map", new MapConstructor());
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -770,6 +771,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (constructor instanceof SetConstructor) {
             return ((SetConstructor) constructor).call(this, args);
         }
+        if (constructor instanceof MapConstructor) {
+            return ((MapConstructor) constructor).call(this, args);
+        }
 
         throw new RuntimeError("TypeError: " + Stringify.stringify(constructor) + " is not a constructor",
                 expr.keyword);
@@ -876,6 +880,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (object instanceof SetObject setObj) {
             return setObj.getProperty(prop, expr.name.getLine());
         }
+        if (object instanceof MapObject mapObj) {
+            return mapObj.getProperty(prop, expr.name.getLine());
+        }
 
         // ── String properties/methods ───────────────────────────────
         if (object instanceof String s) return getStringProperty(s, prop, expr.name);
@@ -932,6 +939,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         if (object instanceof SetObject setObj) {
             String prop = Stringify.toJSString(index);
             return setObj.getProperty(prop, expr.bracket.getLine());
+        }
+        if (object instanceof MapObject mapObj) {
+            String prop = Stringify.toJSString(index);
+            return mapObj.getProperty(prop, expr.bracket.getLine());
         }
 
         if (object instanceof ArrayList<?> arr) {
@@ -1672,6 +1683,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             }
         } else if (iterVal instanceof SetObject setObj) {
             elements.addAll(setObj.getElements());
+        } else if (iterVal instanceof MapObject mapObj) {
+            for (Map.Entry<Object, Object> entry : mapObj.getMap().entrySet()) {
+                List<Object> pair = new ArrayList<>();
+                pair.add(entry.getKey());
+                pair.add(entry.getValue());
+                elements.add(pair);
+            }
         } else if (iterVal == null || iterVal instanceof JSUndefined || iterVal instanceof JSNull) {
             throw new RuntimeError("TypeError: " + Stringify.stringify(iterVal) + " is not iterable", getLine(stmt));
         } else {
@@ -1843,6 +1861,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         }
         if (object instanceof SetObject setObj) {
             return setObj.getProperty(prop, line);
+        }
+        if (object instanceof MapObject mapObj) {
+            return mapObj.getProperty(prop, line);
         }
         if (object instanceof String s) {
             if ("length".equals(prop)) return (double) s.length();

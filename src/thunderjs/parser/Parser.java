@@ -615,7 +615,7 @@ public class Parser {
             if (match(TokenType.LEFT_PAREN)) {
                 expr = finishCall(expr);
             } else if (match(TokenType.DOT)) {
-                Token name = consume(TokenType.IDENTIFIER, "Expected property name after '.'");
+                Token name = consumePropertyName("Expected property name after '.'");
                 expr = new Expr.MemberAccess(expr, name);
             } else if (match(TokenType.LEFT_BRACKET)) {
                 Token bracket = previous();
@@ -670,7 +670,7 @@ public class Parser {
 
         while (true) {
             if (match(TokenType.DOT)) {
-                Token name = consume(TokenType.IDENTIFIER, "Expected property name after '.'");
+                Token name = consumePropertyName("Expected property name after '.'");
                 expr = new Expr.MemberAccess(expr, name);
             } else if (match(TokenType.LEFT_BRACKET)) {
                 Token bracket = previous();
@@ -912,8 +912,8 @@ public class Parser {
                     if (match(TokenType.LEFT_BRACKET)) {
                         key = expression();
                         consume(TokenType.RIGHT_BRACKET, "Expected ']' after computed property name");
-                    } else if (match(TokenType.IDENTIFIER)) {
-                        Token idToken = previous();
+                    } else if (checkPropertyName()) {
+                        Token idToken = advance();
                         String keyStr = idToken.getLexeme();
                         // Shorthand default value: { name = defaultValue }
                         if (match(TokenType.EQUAL)) {
@@ -1061,6 +1061,37 @@ public class Parser {
     // ════════════════════════════════════════════════════════════════════
     //  TOKEN NAVIGATION HELPERS
     // ════════════════════════════════════════════════════════════════════
+
+    private boolean checkPropertyName() {
+        if (isAtEnd()) return false;
+        TokenType type = peek().getType();
+        return type == TokenType.IDENTIFIER ||
+               type == TokenType.LET ||
+               type == TokenType.CONST ||
+               type == TokenType.VAR ||
+               type == TokenType.IF ||
+               type == TokenType.ELSE ||
+               type == TokenType.FOR ||
+               type == TokenType.WHILE ||
+               type == TokenType.DO ||
+               type == TokenType.SWITCH ||
+               type == TokenType.CASE ||
+               type == TokenType.DEFAULT ||
+               type == TokenType.BREAK ||
+               type == TokenType.CONTINUE ||
+               type == TokenType.FUNCTION ||
+               type == TokenType.RETURN ||
+               type == TokenType.TYPEOF ||
+               type == TokenType.NEW ||
+               type == TokenType.IN ||
+               type == TokenType.DELETE ||
+               type == TokenType.OF;
+    }
+
+    private Token consumePropertyName(String message) {
+        if (!checkPropertyName()) throw error(peek(), message);
+        return advance();
+    }
 
     private boolean checkContextualOf() {
         if (isAtEnd()) return false;

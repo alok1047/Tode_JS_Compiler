@@ -66,7 +66,8 @@ public class Levenshtein {
             }
         }
 
-        if (minDistance <= 2) {
+        int threshold = target.length() <= 3 ? 1 : 2;
+        if (minDistance <= threshold) {
             return bestMatch;
         }
         return null;
