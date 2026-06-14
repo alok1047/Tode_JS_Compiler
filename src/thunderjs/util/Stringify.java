@@ -5,6 +5,8 @@ import thunderjs.runtime.JSFunction;
 import thunderjs.runtime.JSNull;
 import thunderjs.runtime.JSUndefined;
 import thunderjs.runtime.DateObject;
+import thunderjs.runtime.SetObject;
+import thunderjs.runtime.MapObject;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,6 +56,14 @@ public class Stringify {
             return stringifyObject((Map<String, Object>) map);
         }
 
+        if (value instanceof SetObject setObj) {
+            return stringifySet(setObj);
+        }
+
+        if (value instanceof MapObject mapObj) {
+            return stringifyMap(mapObj);
+        }
+
         if (value instanceof JSFunction fn) {
             return fn.toString();
         }
@@ -78,7 +88,41 @@ public class Stringify {
         if (value instanceof LinkedHashMap<?, ?> map) {
             return stringifyObject((Map<String, Object>) map);
         }
+        if (value instanceof SetObject setObj) {
+            return stringifySet(setObj);
+        }
+        if (value instanceof MapObject mapObj) {
+            return stringifyMap(mapObj);
+        }
         return stringify(value);
+    }
+
+    private static String stringifySet(SetObject set) {
+        if (set.getElements().isEmpty()) return "Set(0) {}";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Set(").append(set.getElements().size()).append(") { ");
+        int i = 0;
+        for (Object elem : set.getElements()) {
+            if (i > 0) sb.append(", ");
+            sb.append(inspect(elem));
+            i++;
+        }
+        sb.append(" }");
+        return sb.toString();
+    }
+
+    private static String stringifyMap(MapObject map) {
+        if (map.getMap().isEmpty()) return "Map(0) {}";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Map(").append(map.getMap().size()).append(") { ");
+        int i = 0;
+        for (Map.Entry<Object, Object> entry : map.getMap().entrySet()) {
+            if (i > 0) sb.append(", ");
+            sb.append(inspect(entry.getKey())).append(" => ").append(inspect(entry.getValue()));
+            i++;
+        }
+        sb.append(" }");
+        return sb.toString();
     }
 
     /**
