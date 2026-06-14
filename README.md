@@ -1,4 +1,8 @@
-![Node vs Tode](screenshots/image.png)
+<p align="center">
+
+  <img src="screenshots/image.png" width="800">
+
+</p>
 # ⚡ Tode (Powered by ThunderJS)
 
 ### 📖 About
@@ -20,7 +24,9 @@ java -jar tode.jar <path-to-file.js>
 ```bash
 java -jar tode.jar
 ```
-
+<p align="center">
+  <img src="screenshots/repl.png" width="700">
+</p>
 ---
 
 ## 🧪 Testing Suite (For Judges)
@@ -57,6 +63,11 @@ java -jar tode.jar --minify file.js    # Minify Javascript source code
 ```
 
 ### 🔍 Rich Diagnostics & Typo Suggestions
+<p align="center">
+
+  <img src="screenshots/diagnostics.png" width="700">
+
+</p>
 If your code has syntax or runtime errors, Tode maps the failure to the source line and column, offering smart typo corrections:
 
 ```text
@@ -90,7 +101,6 @@ tests/                   # Organized test suites
 ├── basic/               # 5 standard verification test cases
 └── datatypes/           # 18 subfolders spanning 55+ feature/datatype stress tests
 ```
-
 ---
 
 ## ⚙️ Runtime Pipeline
@@ -100,7 +110,11 @@ tests/                   # Organized test suites
                                                           │
    Output / REPL <── [ PrintStream ] <── [ Interpreter ] ◄┘
 ```
+<p align="center">
 
+  <img src="screenshots/ast.png" width="700">
+
+</p>
 ---
 
 ## 🌟 Supported Language Features
